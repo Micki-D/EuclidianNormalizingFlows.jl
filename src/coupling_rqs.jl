@@ -32,19 +32,41 @@ end
 
 function coupling_trafo(trafo::CouplingRQS, x::AbstractMatrix)
 
-    #n_dims = size(x,1)
-    w,h,d = get_params(trafo.nns, x[trafo.mask1,:])
+    n_dims,N = size(x)
+    x_train = reshape(x[trafo.mask1,:],length(trafo.mask1),N)
 
-    spline = RQSpline(w, h, d)
+    if 1 in trafo.mask1 
+        y = reshape(x[1,:],1,N)
+        ladj = zeros(1,size(x,2))
+        c = 1
+    else
+        θ = trafo.nns[1](x_train)
+        w,h,d = get_params(θ, N, Int((size(θ,1)+1)/3))
+        spline = RQSpline(w',h',d')
+        y_tmp, ladj_tmp = with_logabsdet_jacobian(spline, reshape(x[1,:],N,1))
+        y = y_tmp'
+        ladj = ladj_tmp'
+        c = 2
+    end
 
-    y, LogJac = with_logabsdet_jacobian(spline, x[trafo.mask2,:])
+    for i in 2:n_dims
+        if i in trafo.mask1 
+            y = vcat(y,reshape(x[i,:],1,N))
+        else
+            θ = trafo.nns[c](x_train)
+            w,h,d = get_params(θ, N, Int((size(θ,1)+1)/3))
+            spline = RQSpline(w',h',d')
+            y_tmp, ladj_tmp = with_logabsdet_jacobian(spline, reshape(x[i,:],N,1))
+            y = vcat(y,y_tmp')
+            ladj += ladj_tmp'
+            c += 1 
+        end
+    end 
 
-    return _sort_dimensions(reshape(x[trafo.mask1,:], length(trafo.mask1), size(x,2)), y, trafo.mask1), LogJac
+    return y, ladj
 end
 
 export coupling_trafo
-
-
 
 
 #=

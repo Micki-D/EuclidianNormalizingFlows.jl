@@ -39,46 +39,21 @@ function _get_nns(n_dims::Integer, K::Integer, hidden::Integer)
     return nns
 end
 
-function get_params(nns::AbstractArray, x::AbstractMatrix)
-    
-    res = nns[1](x[:,1])
+function get_params(θ::AbstractMatrix, N::Integer, K::Integer)
 
-    for i in 2:length(nns)
-        res = hcat(res,nns[i](x[:,1]))
-    end
+    w = _cumsum(_softmax(θ[1:K,:]))
+    h = _cumsum(_softmax(θ[K+1:2K,:]))
+    d = _softplus(θ[2K+1:end,:])
 
-    for j in 2:size(x,2)
-        res_tmp = nns[1](x[:,j])
-        for k in 2:length(nns)
-            res_tmp = hcat(res_tmp,nns[k](x[:,j]))
-        end
-        res = cat(res,res_tmp,dims=3)
-    end
+    w = vcat(repeat([-5,], 1, N), w)
+    h = vcat(repeat([-5,], 1, N), h)
+    d = vcat(repeat([1,], 1, N), d)
+    d = vcat(d, repeat([1,], 1, N))
 
-    res = permutedims(res,(2,3,1))
-
-    K = Int((size(res,3)+1)/3)
-
-    return format_params(res[:,:,1:K], res[:,:,K+1:2K], res[:,:,2K+1:end])
+    return w, h, d
 end
 
 export get_params
-
-
-function format_params(raw_w::AbstractArray, raw_h::AbstractArray, raw_d::AbstractArray)
-
-    one_pad = repeat([1], size(raw_w, 1), size(raw_w, 2))
-    five_pad = repeat([-5], size(raw_w, 1), size(raw_w, 2))
-
-    w = cat(ignore_derivatives(five_pad),_cumsum_tri(_softmax_tri(raw_w)),dims=3)
-    h = cat(ignore_derivatives(five_pad),_cumsum_tri(_softmax_tri(raw_h)),dims=3)
-    d = cat(ignore_derivatives(one_pad),_softmax_tri(raw_d),ignore_derivatives(one_pad),dims=3)
-
-    return w,h,d
-end
-
-export format_params
-
 
 function _sort_dimensions(x::AbstractMatrix, y::AbstractMatrix, mask1::AbstractVector)
     
@@ -116,20 +91,11 @@ end
 
 function _softmax(x::AbstractMatrix)
 
-    val = cat([_softmax(i) for i in eachrow(x)]..., dims=2)'
+    val = hcat([_softmax(i) for i in eachcol(x)]...)
 
     return val 
 end
 
-function _softmax_tri(x::AbstractArray)
-    slices = [slice for slice in eachslice(x,dims=2)]
-    res = _softmax(slices[1])
-
-    for i in 2:length(slices)
-        res = cat(res, _softmax(slices[i]),dims=3)
-    end
-    return permutedims(res, (1,3,2))
-end
 
 function _cumsum(x::AbstractVector; B = 5)
     return 2 .* B .* cumsum(x) .- B 
@@ -137,17 +103,7 @@ end
 
 function _cumsum(x::AbstractMatrix)
 
-    return cat([_cumsum(i) for i in eachrow(x)]..., dims=2)'
-end
-
-function _cumsum_tri(x::AbstractArray)
-    slices = [slice for slice in eachslice(x,dims=2)]
-    res = _cumsum(slices[1])
-
-    for i in 2:length(slices)
-        res = cat(res, _cumsum(slices[i]),dims=3)
-    end
-    return permutedims(res, (1,3,2))
+    return hcat([_cumsum(i) for i in eachcol(x)]...)
 end
 
 
@@ -158,12 +114,6 @@ end
 
 function _softplus(x::AbstractMatrix)
 
-    val = cat([_softplus(i) for i in eachrow(x)]..., dims=2)'
-
-    return val
-end
-
-function _softplus_tri(x::AbstractArray)
     return log.(exp.(x) .+ 1) 
 end
 
