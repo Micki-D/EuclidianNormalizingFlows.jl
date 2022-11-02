@@ -1,6 +1,6 @@
 # This file is a part of EuclidianNormalizingFlows.jl, licensed under the MIT License (MIT).
 
-function get_flow(n_dims::Integer, K::Integer=10, hidden::Integer=20)
+function get_flow(n_dims::Integer, device, K::Integer=10, hidden::Integer=20)
     d = floor(Int, n_dims/2) 
     i = 1
     all_dims = Integer[1:n_dims...]
@@ -8,8 +8,9 @@ function get_flow(n_dims::Integer, K::Integer=10, hidden::Integer=20)
     
     while d <= n_dims
         mask1 = [i:d...]
-        mask2 = all_dims[.![el in mask1 for el in all_dims]]
-        nn1, nn2 = _get_nns(n_dims, K, hidden)
+        # mask2 = all_dims[.![el in mask1 for el in all_dims]]
+        mask2 = vcat(1:1:(i-1), (d+1):1:n_dims)
+        nn1, nn2 = _get_nns(n_dims, K, hidden, device)
         
         d+=1
         i+=1
@@ -25,18 +26,25 @@ end
 # y = block(x)
 export get_flow
 
-function _get_nns(n_dims::Integer, K::Integer, hidden::Integer)
+function _get_nns(n_dims::Integer, K::Integer, hidden::Integer, device)
     d = floor(Int, n_dims/2)
 
-    nn1 = Chain(Dense(n_dims-d => hidden, relu),
-                Dense(hidden => hidden, relu),
-                Dense(hidden => d*(3K-1))
-                )
+    nn1 = Chain(
+        Dense(n_dims-d => hidden, relu),
+        Dense(hidden => hidden, relu),
+        Dense(hidden => d*(3K-1))
+    )
 
-    nn2 = Chain(Dense(d => hidden, relu),
-                Dense(hidden => hidden, relu),
-                Dense(hidden => (n_dims-d)*(3K-1))
-                )
+    nn2 = Chain(
+        Dense(d => hidden, relu),
+        Dense(hidden => hidden, relu),
+        Dense(hidden => (n_dims-d)*(3K-1))
+    )
+
+    if device isa GPU
+        nn1 = fmap(cu, nn1)
+        nn2 = fmap(cu, nn2)
+    end   
 
     return nn1,nn2
 end
@@ -47,10 +55,16 @@ function get_params(θ_raw::AbstractArray, n_dims_trafo::Integer, B::Real = 5.)
     K = Int((size(θ_raw,1)/n_dims_trafo+1)/3)
     θ = reshape(θ_raw, :, n_dims_trafo, N)
 
-    w = cat(repeat([-B], 1, n_dims_trafo, N), _cumsum_tri(_softmax_tri(θ[1:K,:,:])), dims = 1)
-    h = cat(repeat([-B], 1, n_dims_trafo, N), _cumsum_tri(_softmax_tri(θ[K+1:2K,:,:])), dims = 1)
-    d = cat(repeat([1], 1, n_dims_trafo, N), _softplus_tri(θ[2K+1:end,:,:]), repeat([1], 1, n_dims_trafo, N), dims = 1)
-    
+    device = KernelAbstractions.get_device(θ_raw)
+
+    w = device isa GPU ? cat(cu(repeat([-B], 1, n_dims_trafo, N)), _cumsum_tri(_softmax_tri(θ[1:K,:,:])); dims = 1) : cat(repeat([-B], 1, n_dims_trafo, N), _cumsum_tri(_softmax_tri(θ[1:K,:,:])), dims = 1)
+    h = device isa GPU ? cat(cu(repeat([-B], 1, n_dims_trafo, N)), _cumsum_tri(_softmax_tri(θ[K+1:2K,:,:])); dims = 1) : cat(repeat([-B], 1, n_dims_trafo, N), _cumsum_tri(_softmax_tri(θ[K+1:2K,:,:])), dims = 1)
+    d = device isa GPU ? cat(cu(repeat([1], 1, n_dims_trafo, N)), _softplus_tri(θ[2K+1:end,:,:]), cu(repeat([1], 1, n_dims_trafo, N)); dims = 1) : cat(repeat([1], 1, n_dims_trafo, N), _softplus_tri(θ[2K+1:end,:,:]), repeat([1], 1, n_dims_trafo, N), dims = 1)
+
+    # w = cat(repeat([-B], 1, n_dims_trafo, N), _cumsum_tri(_softmax_tri(θ[1:K,:,:])), dims = 1)
+    # h = cat(repeat([-B], 1, n_dims_trafo, N), _cumsum_tri(_softmax_tri(θ[K+1:2K,:,:])), dims = 1)
+    # d = cat(repeat([1], 1, n_dims_trafo, N), _softplus_tri(θ[2K+1:end,:,:]), repeat([1], 1, n_dims_trafo, N), dims = 1)
+
     return w, h, d
 end
 

@@ -38,6 +38,7 @@ Base.hash(x::CenterStretch, h::UInt) = hash(x.c, hash(x.b, hash(x.a, hash(:Cente
 
 function with_logabsdet_jacobian(f::CenterStretch, x::Union{Real,AbstractVecOrMat{<:Real}})
     y = f(x)
+
     neg_ladjs = center_contract_ladj.(y, f.a, f.b, f.c)
     (y, - sum_ladjs(neg_ladjs))
 end
@@ -62,6 +63,9 @@ Base.hash(x::CenterContract, h::UInt) = hash(x.c, hash(x.b, hash(x.a, hash(:Cent
 
 function with_logabsdet_jacobian(f::CenterContract, x::Union{Real,AbstractVecOrMat{<:Real}})
     y = f(x)
+    # println("C")
+    # println(size(x))
+    # println(size(y))
     ladjs = center_contract_ladj.(x, f.a, f.b, f.c)
     (y, sum_ladjs(ladjs))
 end

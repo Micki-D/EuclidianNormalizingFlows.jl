@@ -43,6 +43,10 @@ import InverseFunctions.inverse
 import ChainRulesCore.rrule
 import ChainRulesCore.ignore_derivatives
 import ChangesOfVariables.with_logabsdet_jacobian
+using Base.Threads: @threads
+using CUDA
+using CUDAKernels
+using HypothesisTests
 
 
 include("abstract_trafo.jl")

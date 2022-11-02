@@ -124,12 +124,12 @@ function spline_forward(
 
     ndims, nsmpls = size(x)
 
-    y = zeros(T, ndims, nsmpls)
-    logJac = zeros(T, ndims, nsmpls)
-
     device = KernelAbstractions.get_device(x)
-    n = device isa GPU ? 256 : 4
+    n = device isa GPU ? 256 : Threads.nthreads()
     kernel! = spline_forward_kernel!(device, n)
+
+    y = device isa GPU ? gpu(zeros(T, ndims, nsmpls)) : zeros(T, ndims, nsmpls)
+    logJac = device isa GPU ? gpu(zeros(T, ndims, nsmpls)) : zeros(T, ndims, nsmpls)
 
     ev = kernel!(x, y, logJac, w, h, d, ndrange=size(x))
 
@@ -148,7 +148,9 @@ function spline_forward_pullback(
         w_logJac::AbstractArray{M4},
         h_logJac::AbstractArray{M5},
         d_logJac::AbstractArray{M6},
-        tangent::ChainRulesCore.Tangent;
+        # tangent::Union{AbstractArray, ChainRulesCore.Tangent};
+        tangent_1::AbstractArray,
+        tangent_2::AbstractArray;
     ) where {M0<:Real,M1<:Real, M2<:Real, M3<:Real, M4<:Real, M5<:Real, M6<:Real}
 
     T = promote_type(M0, M1, M2, M3, M4, M5, M6)
@@ -157,19 +159,20 @@ function spline_forward_pullback(
     nsmpls = size(x, 2)
     nparams = size(w, 1)
 
-    y = zeros(T, ndims, nsmpls)
-    logJac = zeros(T, ndims, nsmpls)
-
-    ∂y∂w = zeros(T, nparams, ndims, nsmpls)
-    ∂y∂h = zeros(T, nparams, ndims, nsmpls)
-    ∂y∂d = zeros(T, nparams, ndims, nsmpls)
-
-    ∂LogJac∂w = zeros(T, nparams, ndims, nsmpls)
-    ∂LogJac∂h = zeros(T, nparams, ndims, nsmpls)
-    ∂LogJac∂d = zeros(T, nparams, ndims, nsmpls)
-
     device = KernelAbstractions.get_device(x)
-    n = device isa GPU ? 256 : 4
+    n = device isa GPU ? 256 : Threads.nthreads()
+
+    y = device isa GPU ? gpu(zeros(T, ndims, nsmpls)) : zeros(T, ndims, nsmpls)
+    logJac = device isa GPU ? gpu(zeros(T, ndims, nsmpls)) : zeros(T, ndims, nsmpls)
+
+    ∂y∂w = device isa GPU ? gpu(zeros(T, nparams, ndims, nsmpls)) : zeros(T, nparams, ndims, nsmpls)
+    ∂y∂h = device isa GPU ? gpu(zeros(T, nparams, ndims, nsmpls)) : zeros(T, nparams, ndims, nsmpls)
+    ∂y∂d = device isa GPU ? gpu(zeros(T, nparams, ndims, nsmpls)) : zeros(T, nparams, ndims, nsmpls)
+
+    ∂LogJac∂w = device isa GPU ? gpu(zeros(T, nparams, ndims, nsmpls)) : zeros(T, nparams, ndims, nsmpls)
+    ∂LogJac∂h = device isa GPU ? gpu(zeros(T, nparams, ndims, nsmpls)) : zeros(T, nparams, ndims, nsmpls)
+    ∂LogJac∂d = device isa GPU ? gpu(zeros(T, nparams, ndims, nsmpls)) : zeros(T, nparams, ndims, nsmpls)
+
     kernel! = spline_forward_pullback_kernel!(device, n)
 
     ev = kernel!(
@@ -177,7 +180,8 @@ function spline_forward_pullback(
         w, h, d,
         ∂y∂w, ∂y∂h, ∂y∂d,
         ∂LogJac∂w, ∂LogJac∂h, ∂LogJac∂d, 
-        tangent,
+        tangent_1,
+        tangent_2,
         ndrange=size(x)
         )
 
@@ -189,7 +193,7 @@ function spline_forward_pullback(
     # ∂LogJac∂h = sum(∂LogJac∂h, dims=2)
     # ∂LogJac∂d = sum(∂LogJac∂d, dims=2)
 
-    return NoTangent(), @thunk(tangent[1] .* exp.(logJac)), ∂y∂w, ∂y∂h, ∂y∂d, ∂LogJac∂w, ∂LogJac∂h, ∂LogJac∂d
+    return NoTangent(), @thunk(tangent_1 .* exp.(logJac)), ∂y∂w, ∂y∂h, ∂y∂d, ∂LogJac∂w, ∂LogJac∂h, ∂LogJac∂d
 end
 
 @kernel function spline_forward_kernel!(
@@ -205,7 +209,7 @@ end
     K = size(w, 1) - 1
 
     # Find the bin index
-    k1 = searchsortedfirst_impl(w[:,i,j], x[i,j]) - 1
+    k1 = searchsortedfirst_impl(view(w, :, i, j), x[i,j]) - 1
     k2 = one(typeof(k1))
 
     # Is inside of range
@@ -233,7 +237,9 @@ end
         ∂LogJac∂w_tangent::AbstractArray,
         ∂LogJac∂h_tangent::AbstractArray,
         ∂LogJac∂d_tangent::AbstractArray,
-        tangent::ChainRulesCore.Tangent
+        # tangent::Union{AbstractArray, ChainRulesCore.Tangent},
+        tangent_1::AbstractArray,
+        tangent_2::AbstractArray,
     )
 
     i, j = @index(Global, NTuple)
@@ -242,7 +248,7 @@ end
     K = size(w, 1) - 1
 
     # Find the bin index
-    k1 = searchsortedfirst_impl(w[:,i,j], x[i,j]) - 1
+    k1 = searchsortedfirst_impl(view(w, :, i, j), x[i,j]) - 1
     k2 = one(typeof(k1))
 
     # Is inside of range
@@ -255,19 +261,21 @@ end
     y[i,j] = Base.ifelse(isinside, yᵢⱼ, x[i,j]) 
     logJac[i,j] = Base.ifelse(isinside, LogJacᵢⱼ, zero(typeof(LogJacᵢⱼ)))
 
-    ∂y∂w_tangent[k, i, j]      = tangent[1][i,j] * Base.ifelse(isinside, ∂y∂w[1], zero(eltype(∂y∂w)))
-    ∂y∂h_tangent[k, i, j]      = tangent[1][i,j] * Base.ifelse(isinside, ∂y∂h[1], zero(eltype(∂y∂h)))
-    ∂y∂d_tangent[k, i, j]      = tangent[1][i,j] * Base.ifelse(isinside, ∂y∂d[1], zero(eltype(∂y∂d)))
-    ∂LogJac∂w_tangent[k, i, j] = tangent[2][1,j] * Base.ifelse(isinside, ∂LogJac∂w[1], zero(eltype(∂LogJac∂w)))
-    ∂LogJac∂h_tangent[k, i, j] = tangent[2][1,j] * Base.ifelse(isinside, ∂LogJac∂h[1], zero(eltype(∂LogJac∂h)))
-    ∂LogJac∂d_tangent[k, i, j] = tangent[2][1,j] * Base.ifelse(isinside, ∂LogJac∂d[1], zero(eltype(∂LogJac∂d)))
+    # ∂y∂w_tangent[k, i, j]      = tangent[1][i,j] * Base.ifelse(isinside, ∂y∂w[1], zero(eltype(∂y∂w)))
+    
+    ∂y∂w_tangent[k, i, j]      = tangent_1[i,j] * Base.ifelse(isinside, ∂y∂w[1], zero(eltype(∂y∂w)))
+    ∂y∂h_tangent[k, i, j]      = tangent_1[i,j] * Base.ifelse(isinside, ∂y∂h[1], zero(eltype(∂y∂h)))
+    ∂y∂d_tangent[k, i, j]      = tangent_1[i,j] * Base.ifelse(isinside, ∂y∂d[1], zero(eltype(∂y∂d)))
+    ∂LogJac∂w_tangent[k, i, j] = tangent_2[1,j] * Base.ifelse(isinside, ∂LogJac∂w[1], zero(eltype(∂LogJac∂w)))
+    ∂LogJac∂h_tangent[k, i, j] = tangent_2[1,j] * Base.ifelse(isinside, ∂LogJac∂h[1], zero(eltype(∂LogJac∂h)))
+    ∂LogJac∂d_tangent[k, i, j] = tangent_2[1,j] * Base.ifelse(isinside, ∂LogJac∂d[1], zero(eltype(∂LogJac∂d)))
 
-    ∂y∂w_tangent[k+1, i, j]       = tangent[1][i,j] * Base.ifelse(isinside, ∂y∂w[2], zero(eltype(∂y∂w)))
-    ∂y∂h_tangent[k+1, i, j]       = tangent[1][i,j] * Base.ifelse(isinside, ∂y∂h[2], zero(eltype(∂y∂h)))
-    ∂y∂d_tangent[k+1, i, j]       = tangent[1][i,j] * Base.ifelse(isinside, ∂y∂d[2], zero(eltype(∂y∂d)))
-    ∂LogJac∂w_tangent[k+1, i, j]  = tangent[2][1,j] * Base.ifelse(isinside, ∂LogJac∂w[2], zero(eltype(∂LogJac∂w)))
-    ∂LogJac∂h_tangent[k+1, i, j]  = tangent[2][1,j] * Base.ifelse(isinside, ∂LogJac∂h[2], zero(eltype(∂LogJac∂h)))
-    ∂LogJac∂d_tangent[k+1, i, j]  = tangent[2][1,j] * Base.ifelse(isinside, ∂LogJac∂d[2], zero(eltype(∂LogJac∂d))) # account for right pad in d?
+    ∂y∂w_tangent[k+1, i, j]       = tangent_1[i,j] * Base.ifelse(isinside, ∂y∂w[2], zero(eltype(∂y∂w)))
+    ∂y∂h_tangent[k+1, i, j]       = tangent_1[i,j] * Base.ifelse(isinside, ∂y∂h[2], zero(eltype(∂y∂h)))
+    ∂y∂d_tangent[k+1, i, j]       = tangent_1[i,j] * Base.ifelse(isinside, ∂y∂d[2], zero(eltype(∂y∂d)))
+    ∂LogJac∂w_tangent[k+1, i, j]  = tangent_2[1,j] * Base.ifelse(isinside, ∂LogJac∂w[2], zero(eltype(∂LogJac∂w)))
+    ∂LogJac∂h_tangent[k+1, i, j]  = tangent_2[1,j] * Base.ifelse(isinside, ∂LogJac∂h[2], zero(eltype(∂LogJac∂h)))
+    ∂LogJac∂d_tangent[k+1, i, j]  = tangent_2[1,j] * Base.ifelse(isinside, ∂LogJac∂d[2], zero(eltype(∂LogJac∂d))) # account for right pad in d?
 end
 
 function ChainRulesCore.rrule(
@@ -283,7 +291,8 @@ function ChainRulesCore.rrule(
 
     # To do: Rewrite to avoid repeating calculation. 
     y, logJac = spline_forward(x, w, h, d, w_logJac, h_logJac, d_logJac)
-    pullback(tangent) = spline_forward_pullback(x, w, h, d, w_logJac, h_logJac, d_logJac, tangent)
+    device = KernelAbstractions.get_device(x)
+    pullback(tangent) = device isa GPU ? spline_forward_pullback(x, w, h, d, w_logJac, h_logJac, d_logJac, gpu(tangent[1]), gpu(tangent[2])) : spline_forward_pullback(x, w, h, d, w_logJac, h_logJac, d_logJac, tangent[1], tangent[2])
     return (y, logJac), pullback
 end
 
@@ -421,7 +430,7 @@ function spline_backward(
     logJac = zeros(T, ndims, nsmpls)
 
     device = KernelAbstractions.get_device(x)
-    n = device isa GPU ? 256 : 4
+    n = device isa GPU ? 256 : Threads.nthreads()
     kernel! = spline_backward_kernel!(device, n)
 
     ev = kernel!(x, y, logJac, w, h, d, ndrange=size(x))
@@ -445,7 +454,7 @@ end
     K = size(w, 2)
 
     # Find the bin index
-    k1 = searchsortedfirst_impl(h[i,:], x[i,j]) - 1
+    k1 = searchsortedfirst_impl(view(h, i, :), x[i,j]) - 1
     k2 = one(typeof(k1))
 
    # Is inside of range

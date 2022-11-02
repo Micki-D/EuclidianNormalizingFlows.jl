@@ -96,7 +96,7 @@ end
 ####################################################
 
 
-nn1, nn2 = EuclidianNormalizingFlows._get_nns(n_dims, 10, 20)
+nn1, nn2 = EuclidianNormalizingFlows._get_nns(n_dims, 10, 20, device)
 
 nn1 = Chain(
             Dense(Float64.(nn1.layers[1].weight),Float64.(nn1.layers[1].bias), relu),

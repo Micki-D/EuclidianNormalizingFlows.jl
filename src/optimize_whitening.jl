@@ -6,7 +6,7 @@ std_normal_logpdf(x::Real) = -(abs2(x) + log2π)/2
 
 function mvnormal_negll_trafo(trafo::Function, X::AbstractMatrix{<:Real})
     nsamples = size(X, 2) # normalize by number of samples to be independent of batch size:
-
+    
     Y, ladj = with_logabsdet_jacobian(trafo, X)
     #ref_ll = sum(sum(std_normal_logpdf.(Y), dims = 1) .+ ladj) / nsamples
     # Faster:
@@ -50,57 +50,46 @@ function optimize_whitening(
     (result = trafo, optimizer_state = state, negll_history = vcat(negll_history, negll_hist))
 end
 
-
-function optimize_whitening_ann(
-    smpls::VectorOfSimilarVectors{<:Real}, initial_trafo::Function, annealing_steps::Vector;
-    nbatches::Integer = 100, nepochs::Integer = 100,
-    negll_history = Vector{Float64}(),
-    shuffle_samples::Bool = false    
+function optimize_whitening_stationary(
+    rand_dist::Function, 
+    initial_trafo::Function, optimizer;
+    nbatches::Integer = 2, batchsize::Integer = 2, max_nepochs::Integer = 2, stationary_p_val::Real = 1e-3,
+    optstate = Optimisers.setup(optimizer, deepcopy(initial_trafo)),
+    negll_history = Vector{Float64}(), wanna_use_GPU::Bool = false
 )
-    batchsize = round(Int, length(smpls) / nbatches)
-    batches = collect(Iterators.partition(smpls, batchsize))
+    
     trafo = deepcopy(initial_trafo)
-    optstate = Optimisers.setup(Optimisers.Adam(annealing_steps[1]), deepcopy(initial_trafo))
     state = deepcopy(optstate)
     negll_hist = Vector{Float64}()
-
-    negll_hist_mean = Vector{Float64}()
-
-    step_count = 2
-
-    for i in 1:nepochs
-        # if i >3
-        #     mc_diff_1 = negll_hist_mean[end-3] - negll_hist_mean[end-2]
-        #     mc_diff_2 = negll_hist_mean[end-2] - negll_hist_mean[end-1]
-
-        #     if mc_diff_1/mc_diff_2<1.5
-        #         optstate = Optimisers.setup(Optimisers.Adam(annealing_steps[step_count]), deepcopy(initial_trafo))
-        #         state = deepcopy(optstate)
-        #         step_count+=1
-        #     end
-        # end
-        if i%50==0 && step_count <= length(annealing_steps)
-            optstate = Optimisers.setup(Optimisers.Adam(annealing_steps[step_count]), trafo)
-            state = deepcopy(optstate)
-            println("using $(annealing_steps[step_count]) for stepsize")
-            step_count+=1
-        end
-
-        for batch in batches
-            X = flatview(batch)
+    stationary_flag = true
+    nepochs = 0
+    
+    ### WARMUP ###
+    X = rand_dist(2)
+    mvnormal_negll_trafograd(trafo, X)
+    ##############
+    
+    while stationary_flag && nepochs < max_nepochs
+        @time for i in 1:nbatches
+            X = rand_dist(batchsize)
             negll, d_trafo = mvnormal_negll_trafograd(trafo, X)
             state, trafo = Optimisers.update(state, trafo, d_trafo)
             push!(negll_hist, negll)
         end
-
-        # mean_cost = mean(negll_hist[end-nbatches+1:end])
-        # push!(negll_hist_mean, mean_cost)
-
-        if shuffle_samples
-            shuffled_smpls = shuffle(smpls)
-            batches = collect(Iterators.partition(shuffled_smpls, batchsize))
+        nepochs += 1
+        p_val = pvalue(ADFTest(cpu(negll_hist)[end-nbatches+1:end], :constant, 1))
+        if !(0 <= p_val <= 1)
+            println("p_val is $(p_val)")
+            println(cpu(negll_hist)[end-nbatches+1:end])
+            break
         end
+        if p_val < stationary_p_val
+            stationary_flag = false
+        end
+        println("Done epoch $(nepochs), p_val = $(p_val)")
     end
-    (result = trafo, optimizer_state = state, negll_history = vcat(negll_history, negll_hist), negll_hist_mean = negll_hist_mean)
+    (result = trafo, optimizer_state = state, negll_history = vcat(negll_history, negll_hist))
 end
-export optimize_whitening_ann
+
+export optimize_trafo
+

@@ -23,8 +23,14 @@ end
 
 function coupling_trafo(trafo::CouplingRQS, x::AbstractMatrix)
 
-    x₁ = reshape(x[trafo.mask1,:], length(trafo.mask1), size(x,2))
-    x₂ = reshape(x[trafo.mask2,:], length(trafo.mask2), size(x,2))
+    # x₁ = reshape(x[trafo.mask1,:], length(trafo.mask1), size(x,2))
+    # x₂ = reshape(x[trafo.mask2,:], length(trafo.mask2), size(x,2))
+
+    # x₁ = view(x, trafo.mask1, axes(x,2))
+    # x₂ = view(x, trafo.mask2, axes(x,2))
+
+    x₁ = x[trafo.mask1, 1:end]
+    x₂ = x[trafo.mask2, 1:end]
 
     y₁, LogJac₁ = partial_coupling_trafo(trafo.nn1, x₁, x₂)
     y₂, LogJac₂ = partial_coupling_trafo(trafo.nn2, x₂, y₁)
