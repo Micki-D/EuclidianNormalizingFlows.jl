@@ -20,6 +20,9 @@ function get_flow(n_dims::Integer, K::Integer=10, hidden::Integer=20)
     return fchain(trafos)
 end 
 
+# flow = get_flow(3)
+# block = flow.fs[1]
+# y = block(x)
 export get_flow
 
 function _get_nns(n_dims::Integer, K::Integer, hidden::Integer)
