@@ -100,21 +100,21 @@ export get_params
 function _sort_dimensions(y₁::AbstractMatrix, y₂::AbstractMatrix, mask1::AbstractVector)
     
     if 1 in mask1
-        res = reshape(y₁[1,:],1,size(y₁,2))
+        res = reshape(CUDAKernels.@allowscalar(y₁[1,:]),1,size(y₁,2))
         c1 = 2
         c2 = 1
     else
-        res = reshape(y₂[1,:],1,size(y₁,2))
+        res = reshape(CUDAKernels.@allowscalar(y₂[1,:]),1,size(y₁,2))
         c1 = 1
         c2 = 2
     end
 
     for i in 2:(size(y₁,1)+size(y₂,1))
         if i in mask1
-            res = vcat(res, reshape(y₁[c1,:],1,size(y₁,2)))
+            res = vcat(res, reshape(CUDAKernels.@allowscalar(y₁[c1,:]),1,size(y₁,2)))
             c1+=1
         else
-            res = vcat(res, reshape(y₂[c2,:],1,size(y₂,2)))
+            res = vcat(res, reshape(CUDAKernels.@allowscalar(y₂[c2,:]),1,size(y₂,2)))
             c2+=1
         end
     end

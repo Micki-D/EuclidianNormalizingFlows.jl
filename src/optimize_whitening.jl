@@ -23,7 +23,7 @@ function mvnormal_negll_trafograd(trafo::Function, X::AbstractMatrix{<:Real})
 end
 
 
-function optimize_whitening(
+function optimize_whitening_gpu(
     smpls::VectorOfSimilarVectors{<:Real}, initial_trafo::Function, optimizer;
     nbatches::Integer = 100, nepochs::Integer = 100,
     optstate = Optimisers.setup(optimizer, deepcopy(initial_trafo)),
@@ -32,13 +32,16 @@ function optimize_whitening(
 )
     batchsize = round(Int, length(smpls) / nbatches)
     batches = collect(Iterators.partition(smpls, batchsize))
-    trafo = deepcopy(initial_trafo)
-    state = deepcopy(optstate)
-    negll_hist = Vector{Float64}()
+
+    device = KernelAbstractions.get_device(initial_trafo.nn1.layers[1].weight)
+
+    trafo = device isa GPU ? gpu(deepcopy(initial_trafo)) : deepcopy(initial_trafo)
+    state = device isa GPU ? gpu(deepcopy(optstate)) : deepcopy(optstate)
+    negll_hist = device isa GPU ? gpu(Vector{Float64}()) : Vector{Float64}()
     for i in 1:nepochs
         for batch in batches
-            X = flatview(batch)
-            negll, d_trafo = mvnormal_negll_trafograd(trafo, X)
+            X = device isa GPU ? gpu(flatview(batch)) : flatview(batch)
+            negll, d_trafo = EuclidianNormalizingFlows.mvnormal_negll_trafograd(trafo, X)
             state, trafo = Optimisers.update(state, trafo, d_trafo)
             push!(negll_hist, negll)
         end
@@ -49,6 +52,8 @@ function optimize_whitening(
     end
     (result = trafo, optimizer_state = state, negll_history = vcat(negll_history, negll_hist))
 end
+
+export optimize_whitening_gpu
 
 function optimize_whitening_stationary(
     rand_dist::Function, 
