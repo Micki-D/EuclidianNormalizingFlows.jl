@@ -1,21 +1,11 @@
 # This file is a part of EuclidianNormalizingFlows.jl, licensed under the MIT License (MIT).
 
-function get_flow(n_dims::Integer, device, K::Integer=10, hidden::Integer=20)
-    d = floor(Int, n_dims/2) 
-    i = 1
-    all_dims = Integer[1:n_dims...]
+function get_flow(n_dims::Integer, device, K::Integer=10, hidden::Integer=20, S::Integer=4, L::Integer=1)
+    
     trafos = Function[]
     
-    while d <= n_dims
-        mask1 = [i:d...]
-        # mask2 = all_dims[.![el in mask1 for el in all_dims]]
-        mask2 = vcat(1:1:(i-1), (d+1):1:n_dims)
-        nn1, nn2 = _get_nns(n_dims, K, hidden, device)
-        
-        d+=1
-        i+=1
-
-        push!(trafos, CouplingRQS(nn1, nn2, mask1, mask2))
+    for i in 1:S
+        push!(trafos, ActNorm(i), Conv1x1(n_dims), CouplingRQS(get_nn(n_dims, K, hidden, device)))
     end
 
     return fchain(trafos)
@@ -48,27 +38,20 @@ end
 
 export get_indie_flow
 
-function _get_nns(n_dims::Integer, K::Integer, hidden::Integer, device)
-    d = floor(Int, n_dims/2)
+function get_nn(n_dims::Integer, K::Integer, hidden::Integer, device)
+    d = ceil(Int, n_dims/2)
 
-    nn1 = Chain(
+    nn = Chain(
         Dense(n_dims-d => hidden, relu),
         Dense(hidden => hidden, relu),
         Dense(hidden => d*(3K-1))
     )
 
-    nn2 = Chain(
-        Dense(d => hidden, relu),
-        Dense(hidden => hidden, relu),
-        Dense(hidden => (n_dims-d)*(3K-1))
-    )
-
     if device isa GPU
-        nn1 = fmap(cu, nn1)
-        nn2 = fmap(cu, nn2)
+        nn = fmap(cu, nn)
     end   
 
-    return nn1,nn2
+    return nn
 end
 
 function get_params(θ_raw::AbstractArray, n_dims_trafo::Integer, B::Real = 5.)
@@ -83,66 +66,10 @@ function get_params(θ_raw::AbstractArray, n_dims_trafo::Integer, B::Real = 5.)
     h = device isa GPU ? cat(cu(repeat([-B], 1, n_dims_trafo, N)), _cumsum_tri(_softmax_tri(θ[K+1:2K,:,:])); dims = 1) : cat(repeat([-B], 1, n_dims_trafo, N), _cumsum_tri(_softmax_tri(θ[K+1:2K,:,:])), dims = 1)
     d = device isa GPU ? cat(cu(repeat([1], 1, n_dims_trafo, N)), _softplus_tri(θ[2K+1:end,:,:]), cu(repeat([1], 1, n_dims_trafo, N)); dims = 1) : cat(repeat([1], 1, n_dims_trafo, N), _softplus_tri(θ[2K+1:end,:,:]), repeat([1], 1, n_dims_trafo, N), dims = 1)
 
-    # w = cat(repeat([-B], 1, n_dims_trafo, N), _cumsum_tri(_softmax_tri(θ[1:K,:,:])), dims = 1)
-    # h = cat(repeat([-B], 1, n_dims_trafo, N), _cumsum_tri(_softmax_tri(θ[K+1:2K,:,:])), dims = 1)
-    # d = cat(repeat([1], 1, n_dims_trafo, N), _softplus_tri(θ[2K+1:end,:,:]), repeat([1], 1, n_dims_trafo, N), dims = 1)
-
     return w, h, d
 end
 
 export get_params
-
-
-# function _get_nn(n_dims::Integer, K::Integer, hidden::Integer)
-#     d = floor(Int, n_dims/2)
-
-#     nn = Chain(Dense(d => hidden, relu),
-#                Dense(hidden => hidden, relu),
-#                Dense(hidden => (n_dims-d)*(3K-1))
-#                )
-
-#     return nn
-# end
-
-# function format_params(raw_w::AbstractArray, raw_h::AbstractArray, raw_d::AbstractArray)
-
-#     one_pad = repeat([1], size(raw_w, 1), size(raw_w, 2))
-#     five_pad = repeat([-5], size(raw_w, 1), size(raw_w, 2))
-
-#     w = cat(ignore_derivatives(five_pad),_cumsum_tri(_softmax_tri(raw_w)),dims=3)
-#     h = cat(ignore_derivatives(five_pad),_cumsum_tri(_softmax_tri(raw_h)),dims=3)
-#     d = cat(ignore_derivatives(one_pad),_softmax_tri(raw_d),ignore_derivatives(one_pad),dims=3)
-
-#     return w,h,d
-# end
-
-# export format_params
-
-
-function _sort_dimensions(y₁::AbstractMatrix, y₂::AbstractMatrix, mask1::AbstractVector)
-    
-    if 1 in mask1
-        res = reshape(y₁[1,:],1,size(y₁,2))
-        c1 = 2
-        c2 = 1
-    else
-        res = reshape(y₂[1,:],1,size(y₁,2))
-        c1 = 1
-        c2 = 2
-    end
-
-    for i in 2:(size(y₁,1)+size(y₂,1))
-        if i in mask1
-            res = vcat(res, reshape(y₁[c1,:],1,size(y₁,2)))
-            c1+=1
-        else
-            res = vcat(res, reshape(y₂[c2,:],1,size(y₂,2)))
-            c2+=1
-        end
-    end
-    
-    return res
-end
 
 
 function _softmax(x::AbstractVector)
