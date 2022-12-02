@@ -1,16 +1,15 @@
 export ActNorm, ActNormInv, reset!
 
 mutable struct ActNorm <: Function
-    k::Integer
     s::AbstractVector
     b::AbstractVector
-    is_reversed::Bool
+    first_pass::Bool
 end
 
 function ActNorm(k)
-    s = Float64[]
-    b = Float64[]
-    return ActNorm(k, s, b, false)
+    s = zeros(k)
+    b = zeros(k)
+    return ActNorm(s, b, true)
 
 end
 
@@ -57,11 +56,12 @@ end
 function forward(AN::ActNorm, X::AbstractMatrix{T}) where T
     # Initialize during first pass such that
     # output has zero mean and unit variance
-    if isempty(AN.s)
+    if AN.first_pass
         μ = vec(mean(X; dims=2))
         σ_sqr = vec(var(X; dims=2))
         AN.s = 1 ./ sqrt.(σ_sqr)
         AN.b = -μ ./ sqrt.(σ_sqr)
+        AN.first_pass = false
     end
 
     Y = X .* AN.s .+ AN.b
@@ -80,7 +80,7 @@ function inverse(AN::ActNormInv, Y::AbstractMatrix{T}) where T
         AN.s = sqrt.(σ_sqr)
         AN.b = μ
     end
-    
+
     X = (Y .- AN.b) ./ AN.s
     logdet = fill(-sum(log.(abs.(AN.s))), 1, size(X,2))
 

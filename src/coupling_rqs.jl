@@ -53,8 +53,10 @@ export coupling_trafo
 
 function indie_trafo(trafo::PRQS, x::AbstractMatrix)
 
-    x₁ = CUDA.@allowscalar(x[trafo.mask1, 1:end])
-    x₂ = CUDA.@allowscalar(x[trafo.mask2, 1:end])
+    d = ceil(Int, size(x,1)/2)
+
+    x₁ = CUDA.@allowscalar(x[1:d, :])
+    x₂ = CUDA.@allowscalar(x[d+1:end, :])
 
     w, h, d = get_params(trafo.params, size(x₁,1))
     w = gpu(w)

@@ -5,7 +5,7 @@ function get_flow(n_dims::Integer, device, K::Integer=10, hidden::Integer=20, S:
     trafos = Function[]
     
     for i in 1:S
-        push!(trafos, ActNorm(i), Conv1x1(n_dims), CouplingRQS(get_nn(n_dims, K, hidden, device)))
+        push!(trafos, ActNorm(n_dims), Conv1x1(n_dims), CouplingRQS(get_nn(n_dims, K, hidden, device)))
     end
 
     return fchain(trafos)

@@ -66,13 +66,13 @@ end
 function forward(C::Conv1x1, X::AbstractMatrix{T}) where T
 
     Y = apply_conv(eltype(C.v1).(X), C.v1, C.v2, C.v3)
-    return Y, 0# logdet always 0
+    return Y, fill(eltype(Y)(0), 1, size(Y,2)) # logdet always 0
 end
 
 # Inverse pass
 function inverse(C::Conv1x1Inv, Y::AbstractArray{T, N}) where {T, N}
     X = apply_conv(Y, C.v3, C.v2, C.v1)
-    return X, 0 # logdet always 0
+    return X, fill(eltype(X)(0), 1, size(X,2)) # logdet always 0
 end
 
 
