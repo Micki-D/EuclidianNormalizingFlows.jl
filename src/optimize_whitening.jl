@@ -100,6 +100,11 @@ function optimize_whitening_annealing(
             state = Optimisers.adjust(state, learning_rates[i])
         end
 
+        if i == phase_durations[3]
+            trafo.fs[1].freeze_conv = true
+            trafo.fs[2].freeze_conv = true
+        end
+
         #println("Training in epoch $i now.")
 
         shuffled_smpls = shuffle(smpls)

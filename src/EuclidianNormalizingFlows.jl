@@ -56,10 +56,10 @@ include("scale_shift_trafo.jl")
 include("center_stretch.jl")
 include("johnson_trafo.jl")
 include("spline_trafo.jl")
+include("conv1x1.jl")
 include("coupling_rqs.jl")
 include("utils.jl")
 include("actnorm.jl")
-include("conv1x1.jl")
 #include("test_spline_pullback.jl")
 
 end # module

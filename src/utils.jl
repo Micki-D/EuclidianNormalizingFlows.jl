@@ -1,11 +1,25 @@
 # This file is a part of EuclidianNormalizingFlows.jl, licensed under the MIT License (MIT).
 
+function hard_flow(n_dims::Integer, S::Integer=2)
+
+    blocks = Function[]
+
+    for i in 1:S
+
+        push!(blocks, HardFlow(Conv1x1(n_dims), CouplingRQS(get_nn(n_dims, 10, 20, CPU())),CouplingRQS(get_nn(n_dims, 10, 20, CPU())), false))
+    end
+
+    return fchain(blocks)
+end
+
+export hard_flow
+
 function get_flow(n_dims::Integer, device, K::Integer=10, hidden::Integer=20, S::Integer=4, L::Integer=1)
     
     trafos = Function[]
     
     for i in 1:S
-        push!(trafos, ActNorm(n_dims), Conv1x1(n_dims), CouplingRQS(get_nn(n_dims, K, hidden, device)))
+        push!(trafos, Conv1x1(n_dims), CouplingRQS(get_nn(n_dims, K, hidden, device)))
     end
 
     return fchain(trafos)

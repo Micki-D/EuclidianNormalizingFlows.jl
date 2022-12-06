@@ -71,7 +71,7 @@ end
 
 # Inverse pass
 function inverse(C::Conv1x1Inv, Y::AbstractArray{T, N}) where {T, N}
-    X = apply_conv(Y, C.v3, C.v2, C.v1)
+    X = apply_conv(eltype(C.v1).(Y), C.v3, C.v2, C.v1)
     return X, fill(eltype(X)(0), 1, size(X,2)) # logdet always 0
 end
 
