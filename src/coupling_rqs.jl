@@ -67,44 +67,27 @@ function forward(trafo::HardFlow, input::AbstractMatrix, freeze_conv::Bool=false
 
     X = freeze_conv ? input : trafo.C(input)
 
-    μ = vec(mean(X; dims=2))
-    σ_sqr = vec(var(X; dims=2))
-    σ_inv = 1 ./ sqrt.(σ_sqr)
-    x = (X .- μ) .* σ_inv
-    logdet_scale_shift1 = fill(sum(log.(abs.(σ_inv))), 1, size(X,2))
-    d = ceil(Int, size(x,1)/2)
+    d = ceil(Int, size(X,1)/2)
+    c = size(X, 1) - d
 
-    y, logdet_rqs1 = EuclidianNormalizingFlows.with_logabsdet_jacobian(trafo.RQS1,x)
+    y, logdet_rqs1 = EuclidianNormalizingFlows.with_logabsdet_jacobian(trafo.RQS1,X)
 
-    μ2 = vec(mean(y; dims=2))
-    σ_sqr2 = vec(var(y; dims=2))
-    σ_inv2 = 1 ./ sqrt.(σ_sqr2)
-    y₁ = (y .- μ2) .* σ_inv2
-    logdet_scale_shift2 = fill(sum(log.(abs.(σ_inv2))), 1, size(X,2))
-
-    y₂, logdet_rqs2 =  EuclidianNormalizingFlows.with_logabsdet_jacobian(trafo.RQS1,vcat(y₁[d+1:end, :], y₁[1:d, :]))
+    y₂, logdet_rqs2 =  EuclidianNormalizingFlows.with_logabsdet_jacobian(trafo.RQS1,vcat(y[d+1:end, :], y[1:d, :]))
 
 
-    output = freeze_conv ? vcat(y₂[1:d, :], y₂[d+1:end, :]) : InverseFunctions.inverse(trafo.C)(vcat(y₂[1:d, :], y₂[d+1:end, :]))
+    output = freeze_conv ? vcat(y₂[c+1:end, :], y₂[1:c, :]) : InverseFunctions.inverse(trafo.C)(vcat(y₂[c+1:end, :], y₂[1:c, :]))
     #output = vcat(y₂[1:d, :], y₂[d+1:end, :])
 
-    return output, logdet_scale_shift1 + logdet_scale_shift2 + logdet_rqs1 + logdet_rqs2
+    return output, logdet_rqs1 + logdet_rqs2
 end
 
 
 
 function forward(trafo::CouplingRQS, X::AbstractMatrix)
 
-    μ = vec(mean(X; dims=2))
-    σ_sqr = vec(var(X; dims=2))
-    σ_inv = 1 ./ sqrt.(σ_sqr)
-
-    x = (X .- μ) .* σ_inv
-    logdet_scale_shift = fill(sum(log.(abs.(σ_inv))), 1, size(X,2))
-
-    d = ceil(Int, size(x,1)/2)
-    x₁ = CUDA.@allowscalar(x[1:d, :])
-    x₂ = CUDA.@allowscalar(x[d+1:end, :])
+    d = ceil(Int, size(X,1)/2)
+    x₁ = CUDA.@allowscalar(X[1:d, :])
+    x₂ = CUDA.@allowscalar(X[d+1:end, :])
 
     θ = trafo.nn(x₂)
     w, h, d = get_params(θ, size(x₁,1))
@@ -112,7 +95,7 @@ function forward(trafo::CouplingRQS, X::AbstractMatrix)
 
     y₁, LogJac =  with_logabsdet_jacobian(spline, x₁)
 
-    return vcat(y₁,x₂), LogJac + logdet_scale_shift
+    return vcat(y₁,x₂), LogJac 
 end
 
 export coupling_trafo

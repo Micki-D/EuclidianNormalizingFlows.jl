@@ -1,12 +1,12 @@
 # This file is a part of EuclidianNormalizingFlows.jl, licensed under the MIT License (MIT).
 
-function hard_flow(n_dims::Integer, S::Integer=2)
+function hard_flow(n_dims::Integer, device, S::Integer=2)
 
     blocks = Function[]
 
     for i in 1:S
 
-        push!(blocks, HardFlow(Conv1x1(n_dims), CouplingRQS(get_nn(n_dims, 10, 20, CPU())),CouplingRQS(get_nn(n_dims, 10, 20, CPU())), false))
+        push!(blocks, HardFlow(Conv1x1(n_dims, device), CouplingRQS(get_nn(n_dims, 10, 20, device)),CouplingRQS(get_nn(n_dims, 10, 20, device)), false))
     end
 
     return fchain(blocks)
@@ -26,6 +26,31 @@ function get_flow(n_dims::Integer, device, K::Integer=10, hidden::Integer=20, S:
 end 
 
 export get_flow
+
+
+struct DB <: Function
+end
+@functor DB
+
+(f::DB)(x::AbstractMatrix) = dumb_batchnorm(x)
+
+function dumb_batchnorm(x::AbstractMatrix)
+
+    device = KernelAbstractions.get_device(X)
+
+    μ = vec(mean(x; dims=2))
+    σ_sqr = vec(var(x; dims=2))
+    σ_inv = 1 ./ sqrt.(σ_sqr)
+
+    y = (x .- μ) .* σ_inv
+    logdet = device isa GPU ? gpu(fill(sum(log.(abs.(σ_inv))), 1, size(X,2))) : fill(sum(log.(abs.(σ_inv))), 1, size(X,2))
+
+    return y, logdet
+end
+
+export DB
+export dumb_batchnorm
+
 
 function get_indie_flow(n_dims::Integer, N::Integer, device, K::Integer=10, hidden::Integer=20)
     d = floor(Int, n_dims/2) 
@@ -67,6 +92,8 @@ function get_nn(n_dims::Integer, K::Integer, hidden::Integer, device)
 
     return nn
 end
+
+export get_nn
 
 function get_params(θ_raw::AbstractArray, n_dims_trafo::Integer, B::Real = 5.)
 

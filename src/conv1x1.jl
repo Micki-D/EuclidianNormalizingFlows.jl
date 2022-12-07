@@ -16,12 +16,13 @@ function Conv1x1(v1, v2, v3; freeze=false)
     return Conv1x1(k, v1, v2, v3, freeze)
 end
 
-function Conv1x1(k;freeze=false)
+function Conv1x1(k,device;freeze=false)
+
     v1 = reshape(Flux.glorot_uniform(k), 1, k)
     v2 = reshape(Flux.glorot_uniform(k), 1, k)
     v3 = reshape(Flux.glorot_uniform(k), 1, k)
 
-    return Conv1x1(k, v1, v2, v3, freeze)
+    return device isa GPU ? Conv1x1(k, gpu(v1), gpu(v2), gpu(v3), freeze) : Conv1x1(k, v1, v2, v3, freeze)
 end
 
 
@@ -65,8 +66,10 @@ end
 # Forward pass
 function forward(C::Conv1x1, X::AbstractMatrix{T}) where T
 
+    device = KernelAbstractions.get_device(X)
+
     Y = apply_conv(eltype(C.v1).(X), C.v1, C.v2, C.v3)
-    return Y, fill(eltype(Y)(0), 1, size(Y,2)) # logdet always 0
+    return Y, device isa GPU ? gpu(fill(eltype(Y)(0), 1, size(Y,2))) : fill(eltype(Y)(0), 1, size(Y,2)) # logdet always 0
 end
 
 # Inverse pass
