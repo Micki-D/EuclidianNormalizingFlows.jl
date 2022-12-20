@@ -47,13 +47,32 @@ function coupling_trafo(trafo::CouplingRQS, x::AbstractMatrix)
     # x₁ = view(x, trafo.mask1, axes(x,2))
     # x₂ = view(x, trafo.mask2, axes(x,2))
 
-    x₁ = CUDA.@allowscalar(x[trafo.mask1, 1:end])
-    x₂ = CUDA.@allowscalar(x[trafo.mask2, 1:end])
+    # x₁, LogJac_BN1 = blind_batchnorm(CUDA.@allowscalar(x[trafo.mask1, 1:end]))
+    # x₂, LogJac_BN2 = blind_batchnorm(CUDA.@allowscalar(x[trafo.mask2, 1:end]))
 
-    y₁, LogJac₁ = partial_coupling_trafo(trafo.nn1, x₁, x₂)
-    y₂, LogJac₂ = partial_coupling_trafo(trafo.nn2, x₂, y₁)
+    # y₁, LogJac₁ = partial_coupling_trafo(trafo.nn1, x₁, x₂)
 
-    return _sort_dimensions(y₁,y₂,trafo.mask1), LogJac₁ + LogJac₂
+    # y1n, LogJac_BN3 = blind_batchnorm(y₁)
+
+    # y₂, LogJac₂ = partial_coupling_trafo(trafo.nn2, x₂, y1n)
+
+    # y2n, LogJac_BN4 = blind_batchnorm(y₂)
+
+
+
+    # x₁, LogJac_BN1 = blind_batchnorm(CUDA.@allowscalar(x[trafo.mask1, 1:end]))
+    # x₂, LogJac_BN2 = blind_batchnorm(CUDA.@allowscalar(x[trafo.mask2, 1:end]))
+
+    y₁, LogJac₁ = partial_coupling_trafo(trafo.nn1, CUDA.@allowscalar(x[trafo.mask1, 1:end]), CUDA.@allowscalar(x[trafo.mask2, 1:end]))
+
+    # y1n, LogJac_BN3 = blind_batchnorm(y₁)
+
+    #y₂, LogJac₂ = partial_coupling_trafo(trafo.nn2, CUDA.@allowscalar(x[trafo.mask2, 1:end]), y₁)
+
+    # y2n, LogJac_BN4 = blind_batchnorm(y₂)
+
+
+    return _sort_dimensions(y₁,CUDA.@allowscalar(x[trafo.mask2, 1:end]),trafo.mask1), LogJac₁ #+ LogJac₂ #+ LogJac_BN1 + LogJac_BN2 + LogJac_BN3 + LogJac_BN4
 end
 
 export coupling_trafo

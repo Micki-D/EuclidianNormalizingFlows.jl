@@ -4,7 +4,7 @@
 std_normal_logpdf(x::Real) = -(abs2(x) + log2π)/2
 
 
-function mvnormal_negll_trafo(trafo::Function, X::AbstractMatrix{<:Real})
+function mvnormal_negll_trafo(trafo, X::AbstractMatrix{<:Real})
     nsamples = size(X, 2) # normalize by number of samples to be independent of batch size:
     
     Y, ladj = with_logabsdet_jacobian(trafo, X)
@@ -15,7 +15,7 @@ function mvnormal_negll_trafo(trafo::Function, X::AbstractMatrix{<:Real})
     return -ll
 end
 
-function mvnormal_negll_trafo_with_logdensity(trafo::Function, X::AbstractMatrix{<:Real}, logdensity_x::AbstractVector)
+function mvnormal_negll_trafo_with_logdensity(trafo, X::AbstractMatrix{<:Real}, logdensity_x::AbstractVector)
     nsamples = size(X, 2) # normalize by number of samples to be independent of batch size:
     
     Y, ladj = with_logabsdet_jacobian(trafo, X)
@@ -25,7 +25,7 @@ function mvnormal_negll_trafo_with_logdensity(trafo::Function, X::AbstractMatrix
     return -ll
 end
 
-function mvnormal_negll_trafograd(trafo::Function, X::AbstractMatrix{<:Real})
+function mvnormal_negll_trafograd(trafo, X::AbstractMatrix{<:Real})
     negll, back = Zygote.pullback(mvnormal_negll_trafo, trafo, X)
     d_trafo = back(one(eltype(X)))[1]
     return negll, d_trafo
@@ -43,7 +43,7 @@ function optimize_whitening(
     nbatches::Integer = 100, nepochs::Integer = 100,
     optstate = Optimisers.setup(optimizer, deepcopy(initial_trafo)),
     negll_history = Vector{Float64}(),
-    shuffle_samples::Bool = false
+    shuffle_samples::Bool = true
 )
     batchsize = round(Int, length(smpls) / nbatches)
     batches = collect(Iterators.partition(smpls, batchsize))
@@ -51,6 +51,9 @@ function optimize_whitening(
     state = deepcopy(optstate)
     negll_hist = Vector{Float64}()
     for i in 1:nepochs
+        if i%20 == 0 
+            println("+++ Training in epoch $i now")
+        end
         for batch in batches
             X = gpu(flatview(batch))
             negll, d_trafo = mvnormal_negll_trafograd(trafo, X)
@@ -58,8 +61,8 @@ function optimize_whitening(
             push!(negll_hist, negll)
         end
         if shuffle_samples
-            shuffled_smpls = shuffle(smpls)
-            batches = collect(Iterators.partition(shuffled_smpls, batchsize))
+            #shuffled_smpls = shuffle(smpls)
+            batches = collect(Iterators.partition(shuffle(smpls), batchsize))
         end
     end
     (result = trafo, optimizer_state = state, negll_history = vcat(negll_history, negll_hist))
@@ -67,7 +70,7 @@ end
 export optimize_whitening
 
 function optimize_whitening_annealing(
-    smpls, initial_trafo::Function, 
+    smpls, initial_trafo, 
     nbatches::Integer, 
     nepochs::Integer, 
     learn_start::Real, 
@@ -105,9 +108,10 @@ function optimize_whitening_annealing(
         shuffled_smpls = shuffle(smpls)
         batches = collect(Iterators.partition(shuffled_smpls, batchsize))
         for batch in batches 
-            X = gpu(flatview(unshaped.(batch.v)))
-            ld = batch.logd
-            negll, d_trafo = EuclidianNormalizingFlows.mvnormal_negll_trafograd_withld(trafo, X, ld)
+            # X = gpu(flatview(unshaped.(batch.v)))
+            X = gpu(flatview(batch))
+            #ld = batch.logd
+            negll, d_trafo = EuclidianNormalizingFlows.mvnormal_negll_trafograd(trafo, X)
             state, trafo = Optimisers.update(state, trafo, d_trafo)
             push!(negll_hist, negll)
         end

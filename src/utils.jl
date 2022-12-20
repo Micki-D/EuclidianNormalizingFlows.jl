@@ -23,6 +23,47 @@ end
 
 export get_flow
 
+
+function get_flow_musketeer(n_dims::Integer, device, K::Integer=10, hidden::Integer=20)
+
+    trafos = Function[]
+    
+    for i in 1:n_dims 
+        mask1 = [i]
+        # mask2 = all_dims[.![el in mask1 for el in all_dims]]
+        mask2 = [1:(i-1)...,(i+1):n_dims...]
+        nn1, nn2 = _get_nns_musketeer(n_dims, K, hidden, device)
+
+
+        push!(trafos, CouplingRQS(nn1, nn2, mask1, mask2))
+    end
+
+    return fchain(trafos)
+end 
+
+export get_flow_musketeer
+
+
+
+function get_flow_fd(n_dims::Integer, device, K::Integer=10, hidden::Integer=20)
+
+    trafos = Function[]
+
+    mask1 = [1]
+    mask2 = [2:n_dims...]
+    nn1, nn2 = _get_nns(n_dims, K, hidden, device, 1)
+    push!(trafos, CouplingRQS(nn1, nn2, mask1, mask2))
+
+    mask3 = [2:n_dims...]
+    mask4 = [1]
+    nn3, nn4 = _get_nns(n_dims, K, hidden, device, n_dims-1)
+    push!(trafos, CouplingRQS(nn3, nn4, mask3, mask4))
+
+    return fchain(trafos)
+end 
+
+export get_flow_fd
+
 function get_indie_flow(n_dims::Integer, N::Integer, device, K::Integer=10, hidden::Integer=20)
     d = floor(Int, n_dims/2) 
     i = 1
@@ -48,8 +89,133 @@ end
 
 export get_indie_flow
 
-function _get_nns(n_dims::Integer, K::Integer, hidden::Integer, device)
-    d = floor(Int, n_dims/2)
+
+struct BB <: Function
+end
+export BB
+
+@functor BB
+
+(f::BB)(x::AbstractMatrix) = blind_batchnorm(x)[1]
+
+
+function ChangesOfVariables.with_logabsdet_jacobian(f::BB, x::AbstractMatrix)
+    return blind_batchnorm(x)
+end
+
+function blind_batchnorm(x::AbstractMatrix)
+
+    device = KernelAbstractions.get_device(x)
+
+    μ = vec(mean(x; dims=2))
+    σ_sqr = vec(var(x; dims=2))
+    σ_inv = 1 ./ sqrt.(σ_sqr)
+
+    y = (x .- μ) .* σ_inv
+    logdet = device isa GPU ? gpu(fill(sum(log.(abs.(σ_inv))), 1, size(x,2))) : fill(sum(log.(abs.(σ_inv))), 1, size(x,2))
+
+    return y, logdet
+end
+
+export blind_batchnorm
+
+
+
+function _get_nns_musketeer(n_dims::Integer, K::Integer, hidden::Integer, device, d::Integer = floor(Int, n_dims/2),)
+
+    nn1 = Chain(
+        # Dense((n_dims-1) => hidden, relu),
+        # Dense(hidden => hidden, relu),
+        # Dense(hidden => (3K-1))
+        Dense((n_dims-1) => (3K-1))
+        
+    )
+
+    nn2 = Chain(
+        Dense(1 => 1, relu)
+
+    )
+
+    if device isa GPU
+        nn1 = fmap(cu, nn1)
+        nn2 = fmap(cu, nn2)
+    end   
+
+    return nn1,nn2
+end
+
+
+function _get_nns(n_dims::Integer, K::Integer, hidden::Integer, device, d::Integer = floor(Int, n_dims/2),)
+
+    # nn1 = Chain(
+    #     # BatchNorm(n_dims-d),
+    #     # SkipConnection(
+    #     #     Chain(Dense(n_dims-d => hidden, relu),
+    #     #     BatchNorm(hidden),
+    #     #     Dense(hidden => n_dims-d, relu)),
+    #     #     +),
+    #     # relu,
+    #     # BatchNorm(n_dims-d),
+    #     # SkipConnection(
+    #     #     Chain(Dense(n_dims-d => hidden, relu),
+    #     #     BatchNorm(hidden),
+    #     #     Dense(hidden => n_dims-d, relu)),
+    #     #     +),
+    #     # relu,
+    #     # BatchNorm(n_dims-d),
+    #     # SkipConnection(
+    #     #     Chain(Dense(n_dims-d => hidden, relu),
+    #     #     BatchNorm(hidden),
+    #     #     Dense(hidden => n_dims-d, relu)),
+    #     #     +),
+    #     # relu,
+    #     BatchNorm(n_dims-d),
+    #     SkipConnection(
+    #         Chain(Dense(n_dims-d => hidden, relu),
+    #         BatchNorm(hidden),
+    #         Dense(hidden => n_dims-d, relu)),
+    #         +),
+    #     relu,
+    #     BatchNorm(n_dims-d),
+    #     Dense(n_dims-d => hidden, relu),
+    #     BatchNorm(hidden),
+    #     Dense(hidden => d*(3K-1))
+    # )
+
+    # nn2 = Chain(
+    #     # BatchNorm(d),
+    #     # SkipConnection(
+    #     #     Chain(Dense(d => hidden, relu),
+    #     #     BatchNorm(hidden),
+    #     #     Dense(hidden => d, relu)),
+    #     #     +),
+    #     # relu,
+    #     # BatchNorm(d),
+    #     # SkipConnection(
+    #     #     Chain(Dense(d => hidden, relu),
+    #     #     BatchNorm(hidden),
+    #     #     Dense(hidden => d, relu)),
+    #     #     +),
+    #     # relu,
+    #     # BatchNorm(d),
+    #     # SkipConnection(
+    #     #     Chain(Dense(d => hidden, relu),
+    #     #     BatchNorm(hidden),
+    #     #     Dense(hidden => d, relu)),
+    #     #     +),
+    #     # relu,
+    #     BatchNorm(d),
+    #     SkipConnection(
+    #         Chain(Dense(d => hidden, relu),
+    #         BatchNorm(hidden),
+    #         Dense(hidden => d, relu)),
+    #         +),
+    #     relu,
+    #     BatchNorm(d),
+    #     Dense(d => hidden, relu),
+    #     BatchNorm(hidden),
+    #     Dense(hidden => (n_dims-d)*(3K-1))
+    # )
 
     nn1 = Chain(
         Dense(n_dims-d => hidden, relu),
@@ -62,6 +228,14 @@ function _get_nns(n_dims::Integer, K::Integer, hidden::Integer, device)
         Dense(hidden => hidden, relu),
         Dense(hidden => (n_dims-d)*(3K-1))
     )
+
+    # nn1 = Chain(
+    #     Dense(n_dims-d => d*(3K-1))
+    # )
+
+    # nn2 = Chain(
+    #     Dense(d => (n_dims-d)*(3K-1))
+    # )
 
     if device isa GPU
         nn1 = fmap(cu, nn1)
