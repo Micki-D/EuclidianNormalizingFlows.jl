@@ -5,13 +5,12 @@ std_normal_logpdf(x::Real) = -(abs2(x) + log2π)/2
 
 
 function mvnormal_negll_trafo(trafo, X::AbstractMatrix{<:Real})
-    nsamples = size(X, 2) # normalize by number of samples to be independent of batch size:
+    nsamples = size(X, 2) 
     
     Y, ladj = with_logabsdet_jacobian(trafo, X)
-    #ref_ll = sum(sum(std_normal_logpdf.(Y), dims = 1) .+ ladj) / nsamples
-    # Faster:
-    ll = (sum(std_normal_logpdf.(Y)) + sum(ladj)) / nsamples
-    #@assert ref_ll ≈ ll
+    ll = (sum(std_normal_logpdf.(CUDA.@allowscalar(Y[trafo.mask1,:]))) + sum(ladj)) / nsamples
+
+    #ll = (sum(std_normal_logpdf.(CUDA.@allowscalar(Y[trafo.mask1,:]))) + sum(ladj)) / nsamples
     return -ll
 end
 
@@ -51,12 +50,14 @@ function optimize_whitening(
     state = deepcopy(optstate)
     negll_hist = Vector{Float64}()
     for i in 1:nepochs
-        if i%20 == 0 
-            println("+++ Training in epoch $i now")
-        end
+        # if i%20 == 0 
+        #     println("+++ Training in epoch $i now")
+        # end
         for batch in batches
-            X = gpu(flatview(batch))
-            negll, d_trafo = mvnormal_negll_trafograd(trafo, X)
+            #X = gpu(flatview(batch))
+            #X = flatview(batch)
+            
+            negll, d_trafo = mvnormal_negll_trafograd(trafo, flatview(batch))
             state, trafo = Optimisers.update(state, trafo, d_trafo)
             push!(negll_hist, negll)
         end

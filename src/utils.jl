@@ -124,12 +124,58 @@ export blind_batchnorm
 function _get_nns_musketeer(n_dims::Integer, K::Integer, hidden::Integer, device, d::Integer = floor(Int, n_dims/2),)
 
     nn1 = Chain(
-        # Dense((n_dims-1) => hidden, relu),
-        # Dense(hidden => hidden, relu),
-        # Dense(hidden => (3K-1))
-        Dense((n_dims-1) => (3K-1))
-        
-    )
+        Dense((n_dims-1) => hidden, relu),
+        Dense(hidden => hidden, relu),
+        Dense(hidden => (3K-1))
+        )
+
+
+  
+
+    # nn1 = Chain(
+    #     #BatchNorm(n_dims-1),
+    #     SkipConnection(
+    #         Chain(Dense(n_dims-1 => hidden, relu),
+    #         Dense(hidden => hidden, relu),
+
+    #         #BatchNorm(hidden),
+    #         Dense(hidden => n_dims-1, relu)),
+    #         +),
+    #     relu,
+    #     #BatchNorm(n_dims-1),
+    #     SkipConnection(
+    #         Chain(Dense(n_dims-1 => hidden, relu),
+    #         Dense(hidden => hidden, relu),
+
+    #         #BatchNorm(hidden),
+    #         Dense(hidden => n_dims-1, relu)),
+    #         +),
+    #     relu,
+    #     #BatchNorm(n_dims-1),
+    #     SkipConnection(
+    #         Chain(Dense(n_dims-1 => hidden, relu),
+    #         Dense(hidden => hidden, relu),
+            
+    #         #BatchNorm(hidden),
+    #         Dense(hidden => n_dims-1, relu)),
+    #         +),
+    #     relu,
+    #     #BatchNorm(n_dims-1),
+    #     SkipConnection(
+    #         Chain(Dense(n_dims-1 => hidden, relu),
+    #         Dense(hidden => hidden, relu),
+
+    #         #BatchNorm(hidden),
+    #         Dense(hidden => n_dims-1, relu)),
+    #         +),
+    #     relu,
+    #     #BatchNorm(n_dims-1),
+    #     Dense(n_dims-1 => hidden, relu),
+    #     Dense(hidden => hidden, relu),
+
+    #     #BatchNorm(hidden),
+    #     Dense(hidden => (3K-1))
+    # )
 
     nn2 = Chain(
         Dense(1 => 1, relu)
