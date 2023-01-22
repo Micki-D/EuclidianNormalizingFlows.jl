@@ -1,15 +1,6 @@
 # This file is a part of EuclidianNormalizingFlows.jl, licensed under the MIT License (MIT).
 # The algorithm implemented here is described in https://arxiv.org/abs/1906.04032 
 
-struct TrainableRQSpline <: Function
-    widths::AbstractArray{<:Real}
-    heights::AbstractArray{<:Real}
-    derivatives::AbstractArray{<:Real}
-end
-
-export TrainableRQSpline
-@functor TrainableRQSpline
-
 struct RQSpline <: Function
     widths::AbstractArray{<:Real}
     heights::AbstractArray{<:Real}
@@ -19,14 +10,21 @@ end
 export RQSpline
 @functor RQSpline
 
-struct TrainableRQSplineInv <: Function
-    widths::AbstractMatrix{<:Real}
-    heights::AbstractMatrix{<:Real}
-    derivatives::AbstractMatrix{<:Real}
+function RQSpline(raw_params::AbstractMatrix)
+
+
+    
 end
 
-@functor TrainableRQSplineInv
-export TrainableRQSplineInv
+(f::RQSpline)(x::AbstractMatrix{<:Real}) = spline_forward(f, x)[1]
+
+function ChangesOfVariables.with_logabsdet_jacobian(
+    f::RQSpline,
+    x::AbstractMatrix{<:Real}
+)
+    return spline_forward(f, x)
+end
+
 
 struct RQSplineInv <: Function
     widths::AbstractMatrix{<:Real}
@@ -37,52 +35,13 @@ end
 @functor RQSplineInv
 export RQSplineInv
 
-
-Base.:(==)(a::TrainableRQSpline, b::TrainableRQSpline) = a.widths == b.widths && a.heights == b.heights && a.derivatives == b.derivatives
-
-Base.isequal(a::TrainableRQSpline, b::TrainableRQSpline) = isequal(a.widths, b.widths) && isequal(a.heights, b.heights) && isequal(a.derivatives, b.derivatives)
-
-Base.hash(x::TrainableRQSpline, h::UInt) = hash(x.widths, hash(x.heights, hash(x.derivatives, hash(:TrainableRQSpline, hash(:EuclidianNormalizingFlows, h)))))
-
-(f::TrainableRQSpline)(x::AbstractMatrix{<:Real}) = spline_forward(f, x)[1]
-
-(f::RQSpline)(x::AbstractMatrix{<:Real}) = spline_forward(f, x)[1]
+(f::RQSplineInv)(x::AbstractMatrix{<:Real}) = spline_backward(f, x)[1]
 
 function ChangesOfVariables.with_logabsdet_jacobian(
-    f::TrainableRQSpline,
-    x::AbstractMatrix{<:Real}
-)
-    return spline_forward(f, x)
-end
-
-function ChangesOfVariables.with_logabsdet_jacobian(
-    f::RQSpline,
-    x::AbstractMatrix{<:Real}
-)
-    return spline_forward(f, x)
-end
-
-function InverseFunctions.inverse(f::TrainableRQSpline)
-    return TrainableRQSplineInv(f.widths, f.heights, f.derivatives)
-end
-
-Base.:(==)(a::TrainableRQSplineInv, b::TrainableRQSplineInv) = a.widths == b.widths && a.heights == b.heights && a.derivatives == b.derivatives
-
-Base.isequal(a::TrainableRQSplineInv, b::TrainableRQSplineInv) = isequal(a.widths, b.widths) && isequal(a.heights, b.heights) && isequal(a.derivatives, b.derivatives)
-
-Base.hash(x::TrainableRQSplineInv, h::UInt) = hash(x.widths, hash(x.heights, hash(x.derivatives, hash(:TrainableRQSplineInv, hash(:EuclidianNormalizingFlows, h)))))
-
-(f::TrainableRQSplineInv)(x::AbstractMatrix{<:Real}) = spline_backward(f, x)[1]
-
-function ChangesOfVariables.with_logabsdet_jacobian(
-    f::TrainableRQSplineInv,
+    f::RQSplineInv,
     x::AbstractMatrix{<:Real}
 )
     return spline_backward(f, x)
-end
-
-function InverseFunctions.inverse(f::TrainableRQSplineInv)
-    return TrainableRQSpline(f.widths, f.heights, f.derivatives)
 end
 
 # Transformation forward: 

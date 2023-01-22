@@ -48,81 +48,6 @@ export get_flow_musketeer
 
 
 
-function get_flow_fd(n_dims::Integer, device, K::Integer=10, hidden::Integer=20)
-
-    trafos = Function[]
-
-    mask1 = [1]
-    mask2 = [2:n_dims...]
-    nn1, nn2 = _get_nns(n_dims, K, hidden, device, 1)
-    push!(trafos, CouplingRQS(nn1, nn2, mask1, mask2))
-
-    mask3 = [2:n_dims...]
-    mask4 = [1]
-    nn3, nn4 = _get_nns(n_dims, K, hidden, device, n_dims-1)
-    push!(trafos, CouplingRQS(nn3, nn4, mask3, mask4))
-
-    return fchain(trafos)
-end 
-
-export get_flow_fd
-
-function get_indie_flow(n_dims::Integer, N::Integer, device, K::Integer=10, hidden::Integer=20)
-    d = floor(Int, n_dims/2) 
-    i = 1
-    all_dims = Integer[1:n_dims...]
-    trafos = Function[]
-    
-    while d <= n_dims
-        mask1 = [i:d...]
-        # mask2 = all_dims[.![el in mask1 for el in all_dims]]
-        mask2 = vcat(1:1:(i-1), (d+1):1:n_dims)
-        nn1, nn2 = _get_nns(n_dims, K, hidden, device)
-        
-        params = fill(1, (3K-1)*(n_dims-d), N) 
-
-        d+=1
-        i+=1
-
-        push!(trafos, PRQS(nn2, mask1, mask2, params))
-    end
-
-    return fchain(trafos)
-end 
-
-export get_indie_flow
-
-
-struct BB <: Function
-end
-export BB
-
-@functor BB
-
-(f::BB)(x::AbstractMatrix) = blind_batchnorm(x)[1]
-
-
-function ChangesOfVariables.with_logabsdet_jacobian(f::BB, x::AbstractMatrix)
-    return blind_batchnorm(x)
-end
-
-function blind_batchnorm(x::AbstractMatrix)
-
-    device = KernelAbstractions.get_device(x)
-
-    μ = vec(mean(x; dims=2))
-    σ_sqr = vec(var(x; dims=2))
-    σ_inv = 1 ./ sqrt.(σ_sqr)
-
-    y = (x .- μ) .* σ_inv
-    logdet = device isa GPU ? gpu(fill(sum(log.(abs.(σ_inv))), 1, size(x,2))) : fill(sum(log.(abs.(σ_inv))), 1, size(x,2))
-
-    return y, logdet
-end
-
-export blind_batchnorm
-
-
 
 function _get_nns_musketeer(n_dims::Integer, K::Integer, hidden::Integer, device, d::Integer = floor(Int, n_dims/2),)
 
@@ -315,22 +240,6 @@ end
 
 export get_params
 
-
-# function uniformity_measure(samples::AbstractVector{<:Real}) ## samples are assumed to be uniform, since you compare against a Uniform distribution
-#     sort!(samples)
-#     n = length(samples)
-#     gcdf = ecdf(samples)
-#     f(x::Real) = (gcdf(x) - x )^2
-#     res = quadgk(f, 0, samples[1])[1]
-#     for i in 2:n
-#         res += quadgk(f, samples[i-1], samples[i])[1]
-#     end
-#     res += quadgk(f, samples[end], 1)[1]
-#     return res
-# end
-
-# export uniformity_measure
-
 function scale_shift_norm(x::AbstractMatrix)
     n_smpls = size(x,2)    
     stds = Float64[]
@@ -373,32 +282,6 @@ function get_scale_shifted_samples(d, nsamples::Integer, device)
 end
 
 export get_scale_shifted_samples
-# function _get_nn(n_dims::Integer, K::Integer, hidden::Integer)
-#     d = floor(Int, n_dims/2)
-
-#     nn = Chain(Dense(d => hidden, relu),
-#                Dense(hidden => hidden, relu),
-#                Dense(hidden => (n_dims-d)*(3K-1))
-#                )
-
-#     return nn
-# end
-
-# function format_params(raw_w::AbstractArray, raw_h::AbstractArray, raw_d::AbstractArray)
-
-#     one_pad = repeat([1], size(raw_w, 1), size(raw_w, 2))
-#     five_pad = repeat([-5], size(raw_w, 1), size(raw_w, 2))
-
-#     w = cat(ignore_derivatives(five_pad),_cumsum_tri(_softmax_tri(raw_w)),dims=3)
-#     h = cat(ignore_derivatives(five_pad),_cumsum_tri(_softmax_tri(raw_h)),dims=3)
-#     d = cat(ignore_derivatives(one_pad),_softmax_tri(raw_d),ignore_derivatives(one_pad),dims=3)
-
-#     return w,h,d
-# end
-
-# export format_params
-
-
 function _sort_dimensions(y₁::AbstractMatrix, y₂::AbstractMatrix, mask1::AbstractVector)
     
     if 1 in mask1
@@ -511,31 +394,3 @@ function linear_scan()
 
     return w1, w2, h1, h2, d1, d2
 end
-
-
-# function get_params(nns::AbstractArray, x::AbstractMatrix)
-    
-#     res = format_params(nns[1](x[:,1]))
-
-#     for i in 2:length(nns)
-#         res = hcat(res,format_params(nns[i](x[:,1])))
-#     end
-
-#     for j in 2:size(x,2)
-#         res_tmp = format_params(nns[1](x[:,j]))
-#         for k in 2:length(nns)
-#             res_tmp = hcat(res_tmp,format_params(nns[k](x[:,j])))
-#         end
-#         res = cat(res,res_tmp,dims=3)
-#     end
-
-#     res = permutedims(res,(2,3,1))
-
-#     K = Int((size(res,3)-3)/3)
-    
-#     w = res[:,:,1:K+1]
-#     h = res[:,:,K+2:2(K+1)]
-#     d = res[:,:,2(K+1)+1:end]
-
-#     return w, h, d 
-# end
