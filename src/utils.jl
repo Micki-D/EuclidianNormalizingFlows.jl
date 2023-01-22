@@ -1,4 +1,4 @@
-# This file is a part of EuclidianNormalizingFlows.jl, licensed under the MIT License (MIT).
+# This file is a part of EuclidianNormalizingFlows.jl, licensed under the MIT License (MIT)
 
 function get_flow(n_dims::Integer, device, K::Integer=10, hidden::Integer=20)
     d = floor(Int, n_dims/2) 
@@ -11,11 +11,14 @@ function get_flow(n_dims::Integer, device, K::Integer=10, hidden::Integer=20)
         # mask2 = all_dims[.![el in mask1 for el in all_dims]]
         mask2 = vcat(1:1:(i-1), (d+1):1:n_dims)
         nn1, nn2 = _get_nns(n_dims, K, hidden, device)
+        nn3, nn4 = _get_nns(n_dims, K, hidden, device, length(mask1))
         
         d+=1
         i+=1
 
         push!(trafos, CouplingRQS(nn1, nn2, mask1, mask2))
+        push!(trafos, CouplingRQS(nn3, nn4, mask2, mask1))
+
     end
 
     return fchain(trafos)
@@ -313,6 +316,63 @@ end
 export get_params
 
 
+# function uniformity_measure(samples::AbstractVector{<:Real}) ## samples are assumed to be uniform, since you compare against a Uniform distribution
+#     sort!(samples)
+#     n = length(samples)
+#     gcdf = ecdf(samples)
+#     f(x::Real) = (gcdf(x) - x )^2
+#     res = quadgk(f, 0, samples[1])[1]
+#     for i in 2:n
+#         res += quadgk(f, samples[i-1], samples[i])[1]
+#     end
+#     res += quadgk(f, samples[end], 1)[1]
+#     return res
+# end
+
+# export uniformity_measure
+
+function scale_shift_norm(x::AbstractMatrix)
+    n_smpls = size(x,2)    
+    stds = Float64[]
+    for i in axes(x, 1)
+        std_tmp  = std(x[i,:])
+        x[i,:] .*= 1/std_tmp
+        append!(stds, std_tmp)
+
+        mean_tmp = mean(x[i,:])
+        x[i,:] .-= mean_tmp
+    end
+
+    #calculate logabsdetjacobian to track volume change thats introduced by the scaling 
+    ladj_scs = sum(log.(abs.(1 ./ stds)))
+    ladj = fill(ladj_scs, 1, n_smpls)
+
+    return x, ladj
+end
+
+export scale_shift_norm
+
+function get_scale_shifted_samples(d, nsamples::Integer, device)
+    
+    
+
+    samples = bat_sample(d, 
+                    BAT.IIDSampling(nsamples=nsamples)
+                    ).result;
+
+
+
+    smpls_flat, ladj1 = scale_shift_norm(ValueShapes.flatview(unshaped.(samples.v)))
+
+    if device isa GPU
+        smpls_flat = gpu(smpls_flat)
+        ladj1 = gpu(ladj1)
+    end
+
+    return samples, smpls_flat, ladj1
+end
+
+export get_scale_shifted_samples
 # function _get_nn(n_dims::Integer, K::Integer, hidden::Integer)
 #     d = floor(Int, n_dims/2)
 

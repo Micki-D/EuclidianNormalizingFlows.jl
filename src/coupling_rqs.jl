@@ -22,12 +22,23 @@ export PRQS
 
 function ChangesOfVariables.with_logabsdet_jacobian(
     f::CouplingRQS,
-    x::AbstractMatrix{<:Real}
+    x::Any
 )
     return coupling_trafo(f, x)
 end
 
-(f::CouplingRQS)(x::AbstractMatrix{<:Real}) = coupling_trafo(f, x)[1]
+(f::CouplingRQS)(x::Any) = coupling_trafo(f, x)[1]
+
+(f::CouplingRQS)(vs::AbstractValueShape) = vs
+
+
+function InverseFunctions.inverse(f::CouplingRQS)
+    return f
+end
+
+
+
+
 
 function ChangesOfVariables.with_logabsdet_jacobian(
     f::PRQS,
@@ -39,7 +50,12 @@ end
 (f::PRQS)(x::AbstractMatrix{<:Real}) = indie_trafo(f, x)[1]
 
 
-function coupling_trafo(trafo::CouplingRQS, x::AbstractMatrix)
+
+
+
+
+
+function coupling_trafo(trafo::CouplingRQS, x::Any)
     
     y₁, LogJac₁ = partial_coupling_trafo(trafo.nn1, CUDA.@allowscalar(x[trafo.mask1, 1:end]), CUDA.@allowscalar(x[trafo.mask2, 1:end]))
 
@@ -48,23 +64,6 @@ end
 
 export coupling_trafo
 
-function indie_trafo(trafo::PRQS, x::AbstractMatrix)
-
-    x₁ = CUDA.@allowscalar(x[trafo.mask1, 1:end])
-    x₂ = CUDA.@allowscalar(x[trafo.mask2, 1:end])
-
-    w, h, d = get_params(trafo.params, size(x₁,1))
-    w = gpu(w)
-    h = gpu(h)
-    d = gpu(d)
-
-    spline = RQSpline(w, h, d)
-
-    y₁, LogJac₁ = with_logabsdet_jacobian(spline, x₁)
-    y₂, LogJac₂ = partial_coupling_trafo(trafo.nn2, x₂, y₁)
-
-    return _sort_dimensions(y₁,y₂,trafo.mask1), LogJac₁ + LogJac₂
-end
 
 
 
@@ -80,6 +79,66 @@ function partial_coupling_trafo(nn::Chain,
 end
 
 export partial_coupling_trafo
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# function indie_trafo(trafo::PRQS, x::AbstractMatrix)
+
+#     x₁ = CUDA.@allowscalar(x[trafo.mask1, 1:end])
+#     x₂ = CUDA.@allowscalar(x[trafo.mask2, 1:end])
+
+#     w, h, d = get_params(trafo.params, size(x₁,1))
+#     w = gpu(w)
+#     h = gpu(h)
+#     d = gpu(d)
+
+#     spline = RQSpline(w, h, d)
+
+#     y₁, LogJac₁ = with_logabsdet_jacobian(spline, x₁)
+#     y₂, LogJac₂ = partial_coupling_trafo(trafo.nn2, x₂, y₁)
+
+#     return _sort_dimensions(y₁,y₂,trafo.mask1), LogJac₁ + LogJac₂
+# end
+
 
 
 #=

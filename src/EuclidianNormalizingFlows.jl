@@ -9,6 +9,7 @@ Euclidian normalizing flows.
 """
 module EuclidianNormalizingFlows
 
+using BAT
 using LinearAlgebra
 using Random
 using Statistics
