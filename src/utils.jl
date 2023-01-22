@@ -7,17 +7,14 @@ function get_flow(n_dims::Integer, device, K::Integer=10, hidden::Integer=20)
     trafos = Function[]
     
     while d <= n_dims
-        mask1 = [i:d...]
-        # mask2 = all_dims[.![el in mask1 for el in all_dims]]
-        mask2 = vcat(1:1:(i-1), (d+1):1:n_dims)
-        nn1, nn2 = _get_nns(n_dims, K, hidden, device)
-        nn3, nn4 = _get_nns(n_dims, K, hidden, device, length(mask1))
-        
+        mask = broadcast(x -> x in i:d, all_dims)
+        i += 1
         d+=1
-        i+=1
+        
+        nn1, nn2 = _get_nns(n_dims, K, hidden, device)
 
-        push!(trafos, CouplingRQS(nn1, nn2, mask1, mask2))
-        push!(trafos, CouplingRQS(nn3, nn4, mask2, mask1))
+        push!(trafos, CouplingRQSBlock(nn1, mask))
+        push!(trafos, CouplingRQSBlock(nn2, .~mask))
 
     end
 
@@ -282,25 +279,24 @@ function get_scale_shifted_samples(d, nsamples::Integer, device)
 end
 
 export get_scale_shifted_samples
-function _sort_dimensions(y₁::AbstractMatrix, y₂::AbstractMatrix, mask1::AbstractVector)
+
+# just a hack, pls dont judge :(
+function _sort_dimensions(y₁::AbstractMatrix, y₂::AbstractMatrix, mask::AbstractVector)
     
-    if 1 in mask1
+    if mask[1]
         res = reshape(y₁[1,:],1,size(y₁,2))
-        c1 = 2
-        c2 = 1
+        c=2
     else
         res = reshape(y₂[1,:],1,size(y₁,2))
-        c1 = 1
-        c2 = 2
+        c=1
     end
 
-    for i in 2:(size(y₁,1)+size(y₂,1))
-        if i in mask1
-            res = vcat(res, reshape(y₁[c1,:],1,size(y₁,2)))
-            c1+=1
+    for (b,i) in enumerate(mask)
+        if b
+            res = vcat(res, reshape(y₁[c,:],1,size(y₁,2)))
+            c+=1
         else
-            res = vcat(res, reshape(y₂[c2,:],1,size(y₂,2)))
-            c2+=1
+            res = vcat(res, reshape(y₂[i,:],1,size(y₂,2)))
         end
     end
     
