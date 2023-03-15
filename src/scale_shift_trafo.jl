@@ -16,6 +16,11 @@ Base.hash(x::ScaleShiftTrafo, h::UInt) = hash(x.a, hash(x.b, hash(:JohnsonTrafoI
 (f::ScaleShiftTrafo)(x) = muladd.(x, f.a, f.b)
 (f::ScaleShiftTrafo)(vs::AbstractValueShape) = vs
 
+struct AdaptiveScaleShift <: Function
+    trafo::ScaleShiftTrafo
+end
+
+
 
 function ChangesOfVariables.with_logabsdet_jacobian(
     f::ScaleShiftTrafo{<:AbstractVector{<:Real}},

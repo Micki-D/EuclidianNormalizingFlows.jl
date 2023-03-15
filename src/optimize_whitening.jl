@@ -8,9 +8,8 @@ function mvnormal_negll_trafo(trafo, X::AbstractMatrix{<:Real})
     nsamples = size(X, 2) 
     
     Y, ladj = with_logabsdet_jacobian(trafo, X)
-    ll = (sum(std_normal_logpdf.(CUDA.@allowscalar(Y[trafo.mask1,:]))) + sum(ladj)) / nsamples
+    ll = (sum(std_normal_logpdf.(Y[trafo.mask,:])) + sum(ladj)) / nsamples
 
-    #ll = (sum(std_normal_logpdf.(CUDA.@allowscalar(Y[trafo.mask1,:]))) + sum(ladj)) / nsamples
     return -ll
 end
 

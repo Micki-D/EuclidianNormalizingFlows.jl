@@ -291,15 +291,15 @@ function _sort_dimensions(y₁::AbstractMatrix, y₂::AbstractMatrix, mask::Abst
         c=1
     end
 
-    for (b,i) in enumerate(mask)
+    for (i,b) in enumerate(mask[2:end])
         if b
             res = vcat(res, reshape(y₁[c,:],1,size(y₁,2)))
             c+=1
         else
-            res = vcat(res, reshape(y₂[i,:],1,size(y₂,2)))
+            res = vcat(res, reshape(y₂[i+1,:],1,size(y₂,2)))
         end
     end
-    
+
     return res
 end
 

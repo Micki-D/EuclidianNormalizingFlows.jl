@@ -46,25 +46,6 @@ end
 
 # Transformation forward: 
 
-function spline_forward(trafo::TrainableRQSpline, x::AbstractMatrix{<:Real}; B=5.)
-
-    @assert size(trafo.widths, 1) == size(trafo.heights, 1) == size(trafo.derivatives, 1) == size(x, 1) >= 1
-    @assert size(trafo.widths, 2) == size(trafo.heights, 2) == (size(trafo.derivatives, 2) + 1) >= 2
-
-    ndims = size(x, 1)
-
-    w = _cumsum(_softmax(trafo.widths))
-    h = _cumsum(_softmax(trafo.heights))
-    d = _softplus(trafo.derivatives)
-
-    w = hcat(repeat([-B,], ndims,1), w)
-    h = hcat(repeat([-B,], ndims,1), h)
-    d = hcat(repeat([1,], ndims,1), d)
-    d = hcat(d, repeat([1,], ndims,1))
-
-    return spline_forward(RQSpline(w,h,d), x)
-end
-
 function spline_forward(trafo::RQSpline, x::AbstractMatrix{<:Real})
     return spline_forward(x, trafo.widths, trafo.heights, trafo.derivatives, trafo.widths, trafo.heights, trafo.derivatives)
 end
@@ -349,24 +330,6 @@ end
 
 # Transformation backward: 
 
-function spline_backward(trafo::TrainableRQSplineInv, x::AbstractMatrix{<:Real};   B = 5.)
-
-    @assert size(trafo.widths, 1) == size(trafo.heights, 1) == size(trafo.derivatives, 1) == size(x, 1)  >= 1
-    @assert size(trafo.widths, 2) == size(trafo.heights, 2) == (size(trafo.derivatives, 2) + 1)  >= 2
-
-    ndims = size(x, 1)
-
-    w = _cumsum(_softmax(trafo.widths))
-    h = _cumsum(_softmax(trafo.heights))
-    d = _softplus(trafo.derivatives)
-
-    w = hcat(repeat([-B,], ndims,1), w)
-    h = hcat(repeat([-B,], ndims,1), h)
-    d = hcat(repeat([1,], ndims,1), d)
-    d = hcat(d, repeat([1,], ndims,1))
-
-    return spline_backward(RQSplineInv(w, h, d), x)
-end
 
 function spline_backward(trafo::RQSplineInv, x::AbstractMatrix{<:Real})
     return spline_backward(x, trafo.widths, trafo.heights, trafo.derivatives)

@@ -50,7 +50,7 @@ function rqs_trafo!(trafo::Union{CouplingRQSBlock, CouplingRQSBlockInverse}, x::
 
     spline = trafo isa CouplingRQSBlock ? RQSpline : RQSplineInv
     dims_tt = sum(trafo.mask)
-    y, ladj = with_logabsdet_jacobian(spline(get_params(trafo.nn(x[.~trafo.mask,:]), dims_tt)), x[trafo.mask,:])
+    y, ladj = with_logabsdet_jacobian(spline(get_params(trafo.nn(x[.~trafo.mask,:]), dims_tt)...), x[trafo.mask,:])
 
     return _sort_dimensions(y, x, trafo.mask), ladj
 end
