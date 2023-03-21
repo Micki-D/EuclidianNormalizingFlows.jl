@@ -5,8 +5,10 @@ function get_flow(n_dims::Integer, device, K::Integer=10, hidden::Integer=20)
     i = 1
     all_dims = Integer[1:n_dims...]
     trafos = Function[]
-    
+
+
     while d <= n_dims
+
         mask = broadcast(x -> x in i:d, all_dims)
         i += 1
         d+=1
@@ -26,18 +28,13 @@ export get_flow
 
 function get_flow_musketeer(n_dims::Integer, device, K::Integer=10, hidden::Integer=20)
 
-    trafos = Function[]
-    
+    trafos = Function[ScaleShiftNorm(device)]
     for i in 1:n_dims 
-        mask1 = [i]
-        # mask2 = all_dims[.![el in mask1 for el in all_dims]]
-        mask2 = [1:(i-1)...,(i+1):n_dims...]
-        nn1, nn2 = _get_nns_musketeer(n_dims, K, hidden, device)
-
-
-        push!(trafos, CouplingRQS(nn1, nn2, mask1, mask2))
+        mask = fill(false, n_dims)
+        mask[i] = true
+        nn = _get_nn_musketeer(n_dims, K, hidden, device)
+        push!(trafos, CouplingRQSBlock(nn, mask))
     end
-
     return fchain(trafos)
 end 
 
@@ -46,73 +43,17 @@ export get_flow_musketeer
 
 
 
-function _get_nns_musketeer(n_dims::Integer, K::Integer, hidden::Integer, device, d::Integer = floor(Int, n_dims/2),)
+function _get_nn_musketeer(n_dims::Integer, K::Integer, hidden::Integer, device)
 
-    nn1 = Chain(
+    nn = Chain(
         Dense((n_dims-1) => hidden, relu),
         Dense(hidden => hidden, relu),
         Dense(hidden => (3K-1))
         )
-
-
-  
-
-    # nn1 = Chain(
-    #     #BatchNorm(n_dims-1),
-    #     SkipConnection(
-    #         Chain(Dense(n_dims-1 => hidden, relu),
-    #         Dense(hidden => hidden, relu),
-
-    #         #BatchNorm(hidden),
-    #         Dense(hidden => n_dims-1, relu)),
-    #         +),
-    #     relu,
-    #     #BatchNorm(n_dims-1),
-    #     SkipConnection(
-    #         Chain(Dense(n_dims-1 => hidden, relu),
-    #         Dense(hidden => hidden, relu),
-
-    #         #BatchNorm(hidden),
-    #         Dense(hidden => n_dims-1, relu)),
-    #         +),
-    #     relu,
-    #     #BatchNorm(n_dims-1),
-    #     SkipConnection(
-    #         Chain(Dense(n_dims-1 => hidden, relu),
-    #         Dense(hidden => hidden, relu),
-            
-    #         #BatchNorm(hidden),
-    #         Dense(hidden => n_dims-1, relu)),
-    #         +),
-    #     relu,
-    #     #BatchNorm(n_dims-1),
-    #     SkipConnection(
-    #         Chain(Dense(n_dims-1 => hidden, relu),
-    #         Dense(hidden => hidden, relu),
-
-    #         #BatchNorm(hidden),
-    #         Dense(hidden => n_dims-1, relu)),
-    #         +),
-    #     relu,
-    #     #BatchNorm(n_dims-1),
-    #     Dense(n_dims-1 => hidden, relu),
-    #     Dense(hidden => hidden, relu),
-
-    #     #BatchNorm(hidden),
-    #     Dense(hidden => (3K-1))
-    # )
-
-    nn2 = Chain(
-        Dense(1 => 1, relu)
-
-    )
-
     if device isa GPU
-        nn1 = fmap(cu, nn1)
-        nn2 = fmap(cu, nn2)
-    end   
-
-    return nn1,nn2
+        nn = fmap(cu, nn)
+    end  
+    return nn
 end
 
 
@@ -237,36 +178,32 @@ end
 
 export get_params
 
-function scale_shift_norm(x::AbstractMatrix)
-    n_smpls = size(x,2)    
-    stds = Float64[]
-    for i in axes(x, 1)
-        std_tmp  = std(x[i,:])
-        x[i,:] .*= 1/std_tmp
-        append!(stds, std_tmp)
 
-        mean_tmp = mean(x[i,:])
-        x[i,:] .-= mean_tmp
-    end
+function ghm_integration(smpls::AbstractArray, logd_orig::AbstractVector, ladj::AbstractVector, id)
+    
+    smpls= cpu(flatview(smpls))
+    ladj = cpu(ladj)
+    n_smpls = size(smpls, 2)
 
-    #calculate logabsdetjacobian to track volume change thats introduced by the scaling 
-    ladj_scs = sum(log.(abs.(1 ./ stds)))
-    ladj = fill(ladj_scs, 1, n_smpls)
+    logd_posterior = logd_orig - ladj
 
-    return x, ladj
+    frac = [logpdf(id, smpls[:,i]) / logd_posterior[i] for i in 1:n_smpls]
+    integral = n_smpls * inv(sum(frac)) 
+    variance = sqrt(integral^2/n_smpls * var(frac))
+    
+    return integral, variance 
 end
 
-export scale_shift_norm
+export ghm_integration
+
+
+
 
 function get_scale_shifted_samples(d, nsamples::Integer, device)
     
-    
-
     samples = bat_sample(d, 
                     BAT.IIDSampling(nsamples=nsamples)
                     ).result;
-
-
 
     smpls_flat, ladj1 = scale_shift_norm(ValueShapes.flatview(unshaped.(samples.v)))
 

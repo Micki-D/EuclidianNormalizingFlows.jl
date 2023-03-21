@@ -58,6 +58,7 @@ include("center_stretch.jl")
 include("johnson_trafo.jl")
 include("spline_trafo.jl")
 include("coupling_rqs.jl")
+include("scale_shift_norm.jl")
 include("utils.jl")
 #include("test_spline_pullback.jl")
 
