@@ -233,7 +233,7 @@ end
 export get_scale_shifted_samples
 
 # just a hack, pls dont judge :(
-function _sort_dimensions(y₁::AbstractMatrix, y₂::AbstractMatrix, mask::AbstractVector)
+function _sort_dimensions(y₁::AbstractArray, y₂::AbstractArray, mask::AbstractVector)
     
     if mask[1]
         res = reshape(y₁[1,:],1,size(y₁,2))

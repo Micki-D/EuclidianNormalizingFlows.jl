@@ -45,7 +45,7 @@ export AdaptiveScaleShift
 
 function ChangesOfVariables.with_logabsdet_jacobian(
     f::AdaptiveScaleShift,
-    x::AbstractMatrix{<:Real}
+    x::Any
 )
     return f(x), fill(sum(log.(abs.(diag(f.a)))), 1, size(x,2))
 end
