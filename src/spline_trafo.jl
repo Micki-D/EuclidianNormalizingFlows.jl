@@ -10,12 +10,6 @@ end
 export RQSpline
 @functor RQSpline
 
-function RQSpline(raw_params::AbstractMatrix)
-
-
-    
-end
-
 (f::RQSpline)(x::AbstractMatrix{<:Real}) = spline_forward(f, x)[1]
 
 function ChangesOfVariables.with_logabsdet_jacobian(
@@ -27,9 +21,9 @@ end
 
 
 struct RQSplineInv <: Function
-    widths::AbstractMatrix{<:Real}
-    heights::AbstractMatrix{<:Real}
-    derivatives::AbstractMatrix{<:Real}
+    widths::AbstractArray{<:Real}
+    heights::AbstractArray{<:Real}
+    derivatives::AbstractArray{<:Real}
 end
 
 @functor RQSplineInv
@@ -51,17 +45,16 @@ function spline_forward(trafo::RQSpline, x::AbstractMatrix{<:Real})
 end
 
 function spline_forward(
-    x::AbstractArray{M0},
-    w::AbstractArray{M1},
-    h::AbstractArray{M2},
-    d::AbstractArray{M3},
-    w_logJac::AbstractArray{M4},
-    h_logJac::AbstractArray{M5},
-    d_logJac::AbstractArray{M6} 
+        x::AbstractArray{M0},
+        w::AbstractArray{M1},
+        h::AbstractArray{M2},
+        d::AbstractArray{M3},
+        w_logJac::AbstractArray{M4},
+        h_logJac::AbstractArray{M5},
+        d_logJac::AbstractArray{M6} 
     ) where {M0<:Real,M1<:Real, M2<:Real, M3<:Real, M4<:Real, M5<:Real, M6<:Real}
 
     T = promote_type(M0, M1, M2, M3, M4, M5, M6)
-
     ndims, nsmpls = size(x)
 
     device = KernelAbstractions.get_device(x)
@@ -333,6 +326,7 @@ end
 
 function spline_backward(trafo::RQSplineInv, x::AbstractMatrix{<:Real})
     return spline_backward(x, trafo.widths, trafo.heights, trafo.derivatives)
+
 end
 
 
@@ -340,51 +334,50 @@ function spline_backward(
         x::AbstractArray{M0},
         w::AbstractArray{M1},
         h::AbstractArray{M2},
-        d::AbstractArray{M3},
+        d::AbstractArray{M3}
     ) where {M0<:Real,M1<:Real, M2<:Real, M3<:Real}
-
+    
     T = promote_type(M0, M1, M2, M3)
-
-    ndims = size(x, 1)
-    nsmpls = size(x, 2)
-
-    y = zeros(T, ndims, nsmpls)
-    logJac = zeros(T, ndims, nsmpls)
+    ndims, nsmpls = size(x)
 
     device = KernelAbstractions.get_device(x)
     n = device isa GPU ? 256 : Threads.nthreads()
     kernel! = spline_backward_kernel!(device, n)
 
+    y = device isa GPU ? gpu(zeros(T, ndims, nsmpls)) : zeros(T, ndims, nsmpls)
+    logJac = device isa GPU ? gpu(zeros(T, ndims, nsmpls)) : zeros(T, ndims, nsmpls)
+
     ev = kernel!(x, y, logJac, w, h, d, ndrange=size(x))
 
     wait(ev)
+    logJac = sum(logJac, dims=1)
 
-    return y, sum(logJac, dims=1)
+    return y, logJac
 end
 
 @kernel function spline_backward_kernel!(
-        x::AbstractMatrix{M0},
-        y::AbstractMatrix{M1},
-        logJac::AbstractMatrix{M2},
-        w::AbstractMatrix{M3},
-        h::AbstractMatrix{M4},
-        d::AbstractMatrix{M5}
-    ) where {M0<:Real, M1<:Real, M2<:Real, M3<:Real, M4<:Real, M5<:Real,}
+        x::AbstractArray,
+        y::AbstractArray,
+        logJac::AbstractArray,
+        w::AbstractArray,
+        h::AbstractArray,
+        d::AbstractArray
+    ) 
 
     i, j = @index(Global, NTuple)
     
-    K = size(w, 2)
+    K = size(w, 1) - 1
 
     # Find the bin index
-    k1 = searchsortedfirst_impl(view(h, i, :), x[i,j]) - 1
+    k1 = searchsortedfirst_impl(view(h, :, i, j), x[i,j]) - 1
     k2 = one(typeof(k1))
 
-   # Is inside of range
-   isinside = (k1 < K) && (k1 > 0)
-   k = Base.ifelse(isinside, k1, k2)
+    # Is inside of range
+    isinside = (k1 < K) && (k1 > 0)
+    k = Base.ifelse(isinside, k1, k2)
 
-    x_tmp = Base.ifelse(isinside, x[i,j], h[i,k]) # Simplifies unnecessary calculations
-    (yᵢⱼ, LogJacᵢⱼ) = eval_backward_spline_params(w[i,k], w[i,k+1], h[i,k], h[i,k+1], d[i,k], d[i,k+1], x_tmp)
+    x_tmp = Base.ifelse(isinside, x[i,j], w[k,i,j])  # Simplifies unnecessary calculations
+    (yᵢⱼ, LogJacᵢⱼ) = eval_backward_spline_params(w[k,i,j], w[k+1,i,j], h[k,i,j], h[k+1,i,j], d[k,i,j], d[k+1,i,j], x_tmp)
 
     y[i,j] = Base.ifelse(isinside, yᵢⱼ, x[i,j]) 
     logJac[i, j] += Base.ifelse(isinside, LogJacᵢⱼ, zero(typeof(LogJacᵢⱼ)))
