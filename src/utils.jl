@@ -40,6 +40,21 @@ end
 
 export get_flow_musketeer
 
+function get_flow_musketeer_efficient(n_dims::Integer, device, K::Integer=10, hidden::Integer=20)
+
+    trafos = Function[ScaleShiftNorm(device)]
+    for i in 1:n_dims 
+        mask = fill(false, n_dims)
+        mask[i] = true
+        nn = _get_nn_musketeer(n_dims, K, hidden, device)
+        push!(trafos, CouplingRQSBlock(nn, mask))
+    end
+    return fchain(trafos)
+end 
+
+export get_flow_musketeer
+
+
 
 
 
