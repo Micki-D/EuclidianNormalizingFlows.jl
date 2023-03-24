@@ -45,9 +45,10 @@ export AdaptiveScaleShift
 
 function ChangesOfVariables.with_logabsdet_jacobian(
     f::AdaptiveScaleShift,
-    x::Any
-)
-    return f(x), fill(sum(log.(abs.(diag(f.a)))), 1, size(x,2))
+    x::Any  
+)   
+    device = KernelAbstractions.get_device(x)
+    return f(x), device isa GPU ? gpu(fill(sum(log.(abs.(diag(f.a)))), 1, size(x,2))) : fill(sum(log.(abs.(diag(f.a)))), 1, size(x,2))
 end
 
 function InverseFunctions.inverse(f::AdaptiveScaleShift)
