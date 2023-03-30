@@ -51,11 +51,11 @@ function rqs_trafo!(trafo::Union{CouplingRQSBlock, CouplingRQSBlockInverse}, x::
     spline = trafo isa CouplingRQSBlock ? RQSpline : RQSplineInv
     dims_tt = sum(trafo.mask)
 
-    #Experimental 
-    t_dim = findall(x->x, trafo.mask)[1]
-    input_mask = [i < t_dim ? trafo.mask[i] : ~trafo.mask[i] for i in 1:length(trafo.mask)]
-    #previous:
-    #input_mask = .~trafo.mask 
+    #Experimental disintegration theorem approach: 
+    #t_dim = findall(x->x, trafo.mask)[1]
+    #input_mask = [i < t_dim ? trafo.mask[i] : ~trafo.mask[i] for i in 1:length(trafo.mask)]
+    #pure musketeer:
+    input_mask = .~trafo.mask 
     y, ladj = with_logabsdet_jacobian(spline(get_params(trafo.nn(x[input_mask,:]), dims_tt)...), x[trafo.mask,:])   
 
     return _sort_dimensions(y, x, trafo.mask), ladj

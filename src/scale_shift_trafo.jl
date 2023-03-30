@@ -52,9 +52,9 @@ function ChangesOfVariables.with_logabsdet_jacobian(
 end
 
 function InverseFunctions.inverse(f::AdaptiveScaleShift)
-    a_inv = inv(f.a)
-    b_inv = vec(f.b .* diag(-a_inv))
-    return AdaptiveScaleShift(a_inv, b_inv, f.initiated)
+    a_inv = inv(cpu(f.a))
+    b_inv = vec(cpu(f.b) .* diag(-a_inv))
+    return KernelAbstractions.get_device(f.a) isa GPU ? AdaptiveScaleShift(gpu(a_inv), gpu(b_inv), f.initiated) : AdaptiveScaleShift(a_inv, b_inv, f.initiated)
 end
 
 function init_scale_shift(f::AdaptiveScaleShift, x::AbstractArray)
