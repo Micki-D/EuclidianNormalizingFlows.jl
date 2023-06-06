@@ -202,10 +202,10 @@ function ghm_integration(smpls::AbstractArray, logd_orig::AbstractVector, ladj::
     n_smpls = size(smpls, 2)
 
     logd_posterior = logd_orig - ladj
-
-    frac = [logpdf(id, smpls[:,i]) / logd_posterior[i] for i in 1:n_smpls]
+    
+    frac = [exp(logpdf(id, smpls[:,i]) - logd_posterior[i]) for i in 1:n_smpls]
     integral = n_smpls * inv(sum(frac)) 
-    variance = sqrt(integral^2/n_smpls * var(frac))
+    variance = integral^2/n_smpls * var(frac)
     
     return integral, variance 
 end
@@ -213,7 +213,10 @@ end
 export ghm_integration
 
 
-
+function hello()
+    println("hello fellas")
+end
+export hello
 
 function get_scale_shifted_samples(d, nsamples::Integer, device)
     

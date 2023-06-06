@@ -36,6 +36,20 @@ function mvnormal_negll_trafograd_withld(trafo::Function, X::AbstractMatrix{<:Re
 end
 
 
+function param_cost(trafo::Function, X::AbstractMatrix{<:Real})
+    w, h, d = get_params(trafo.nn(X[.~trafo.mask,:]), dims_tt)
+    
+    return nothing
+end
+
+function identity_param_grad(trafo::Function, X::AbstractMatrix{<:Real})
+    cost, back = Zygote.pullback(param_cost, trafo, X)
+    d_params = back(one(eltype(X)))[1]
+    return cost, d_params
+end
+
+
+
 function optimize_whitening(
     smpls::VectorOfSimilarVectors{<:Real}, initial_trafo::Function, optimizer;
     nbatches::Integer = 100, nepochs::Integer = 100,
@@ -68,6 +82,40 @@ function optimize_whitening(
     (result = trafo, optimizer_state = state, negll_history = vcat(negll_history, negll_hist))
 end
 export optimize_whitening
+
+function pretune_whitening(
+    smpls::VectorOfSimilarVectors{<:Real}, initial_trafo::Function, optimizer;
+    nbatches::Integer = 100, nepochs::Integer = 100,
+    optstate = Optimisers.setup(optimizer, deepcopy(initial_trafo)),
+    negll_history = Vector{Float64}(),
+    shuffle_samples::Bool = false
+)
+    batchsize = round(Int, length(smpls) / nbatches)
+    batches = collect(Iterators.partition(smpls, batchsize))
+    trafo = deepcopy(initial_trafo)
+    state = deepcopy(optstate)
+    negll_hist = Vector{Float64}()
+    for i in 1:nepochs
+        # if i%20 == 0 
+        #     println("+++ Training in epoch $i now")
+        # end
+        for batch in batches
+            #X = gpu(flatview(batch))
+            #X = flatview(batch)
+            
+            cost, d_params = identity_param_grad(trafo, flatview(batch))
+            state, trafo = Optimisers.update(state, trafo, d_trafo)
+            push!(negll_hist, negll)
+        end
+        if shuffle_samples
+            #shuffled_smpls = shuffle(smpls)
+            batches = collect(Iterators.partition(shuffle(smpls), batchsize))
+        end
+    end
+    (result = trafo, optimizer_state = state, negll_history = vcat(negll_history, negll_hist))
+end
+export optimize_whitening
+
 
 function optimize_whitening_annealing(
     smpls, initial_trafo, 

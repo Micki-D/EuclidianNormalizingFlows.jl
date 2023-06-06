@@ -7,3 +7,4 @@
 Manifest.toml
 spline_testing.jl
 EuclidianNormalizingFlows.jl.code-workspace
+examples
